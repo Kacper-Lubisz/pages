@@ -239,7 +239,7 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1',
-    port: 4317,
+    port: Number(process.env.PAGE_PORT) || 4317, // per-project override so two repos can serve at once
     strictPort: true, // stable URL for the always-on daemon
     // allow Vite to read real source from anywhere in the repo
     fs: { allow: [repo] },

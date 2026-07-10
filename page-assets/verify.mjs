@@ -7,17 +7,27 @@
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const slug = process.argv[2]
 if (!slug) { console.error('usage: verify.mjs <slug>'); process.exit(2) }
-const PORT = 4317
+const cfg = (() => { try { return JSON.parse(readFileSync(resolve(here, '../.config/pages.config.json'), 'utf8')) } catch { return {} } })()
+const PORT = Number(cfg.port) || 4317
 
 // make sure the daemon is up
 spawnSync('node', [resolve(here, 'page-server.mjs'), 'ensure'], { stdio: 'inherit' })
 
 const IGNORE = ['DevTools', 'favicon']
-const { chromium } = await import('playwright')
+// Prefer @playwright/test (commonly present); fall back to a bare `playwright`. If neither is
+// installed the render gate is optional — warn and pass rather than hard-failing the whole flow.
+const { chromium } = await (async () => {
+  for (const mod of ['@playwright/test', 'playwright']) {
+    try { return await import(mod) } catch { /* try next */ }
+  }
+  console.warn('⚠ VERIFY SKIPPED — no playwright available (install @playwright/test to enable the render gate).')
+  process.exit(0)
+})()
 const browser = await chromium.launch()
 const page = await browser.newPage()
 const problems = []

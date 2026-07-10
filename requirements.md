@@ -6,11 +6,19 @@ present. It never starts the daemon unless you opt in (below).
 ## What's needed
 
 1. **Node.js** (for the daemon CLI and the Vite build).
-2. **A project with the daemon's runtime deps installed** — the bootstrapped `.app/` runs from the
-   host project's `node_modules`, which must provide: `vite`, `@vitejs/plugin-react`, `tailwindcss`,
-   `postcss`, `autoprefixer`, `react`, `react-dom`. In a repo that already uses Vite + Tailwind these
-   are present. In a repo that doesn't, install them (or install into the bootstrapped `.app/`).
-   `preflight` reports `ready: false` when `node_modules/.bin/vite` is missing.
+2. **The daemon's runtime deps must be resolvable** — `vite`, `@vitejs/plugin-react`,
+   `tailwindcss` (v3 — the shipped postcss config is v3), `postcss`, `autoprefixer`, `react`,
+   `react-dom`. `depsReady()` looks in **two** places, in order:
+   - `notes/pages/.app/node_modules/.bin/vite` — a **self-contained** install. In a repo that
+     isn't Vite-based (e.g. Next.js/pnpm), install there so you don't touch the project's
+     `package.json`/lockfile:
+     ```
+     cd notes/pages/.app && npm install --no-save \
+       vite @vitejs/plugin-react tailwindcss@3 postcss autoprefixer react react-dom
+     ```
+   - else the repo's own `node_modules/.bin/vite` — present already in a Vite + Tailwind repo.
+   `preflight` reports `ready: false` (with a pointer here) when neither resolves; `ready: true`
+   once one does.
 
 ## Opt-in autostart
 

@@ -16,8 +16,12 @@ import { homedir } from 'node:os'
 
 const here = dirname(fileURLToPath(import.meta.url))   // notes/pages/.page-assets
 const repo = resolve(here, '../../..')                 // → repo root
-const viteBin = resolve(repo, 'node_modules/.bin/vite')
-const config = resolve(here, '../.app/vite.config.mjs')
+const appDir = resolve(here, '../.app')
+// Prefer a self-contained .app install (a non-Vite project can install the daemon's deps into
+// .app/node_modules); fall back to the repo's node_modules for Vite-based projects.
+const appViteBin = resolve(appDir, 'node_modules/.bin/vite')
+const viteBin = existsSync(appViteBin) ? appViteBin : resolve(repo, 'node_modules/.bin/vite')
+const config = resolve(appDir, 'vite.config.mjs')
 
 // The skill (~/.claude/skills/pages) is the canonical source of the infra; this project's
 // .app/.page-assets/templates are a bootstrapped copy. Refresh them from the skill before
@@ -28,17 +32,16 @@ function bootstrap() {
   if (!existsSync(bootstrapScript)) return
   spawnSync(process.execPath, [bootstrapScript, repo], { stdio: 'inherit' })
 }
-const PIDFILE = resolve(here, '.page-server.pid')
-const LOG = resolve(here, '.page-server.log')
-const PORT = 4317
-const URL = `http://127.0.0.1:${PORT}/`
-
 // Per-project config (gitignored), seeded from the skill default by the `configure` step.
-// autostart is OFF by default: preflight will not bind a port until the user opts in.
+// autostart is OFF by default; `port` may override 4317 so two projects can run daemons at once.
 const CONFIG = resolve(here, '../.config/pages.config.json')
 function readConfig() {
   try { return JSON.parse(readFileSync(CONFIG, 'utf8')) } catch { return {} }
 }
+const PIDFILE = resolve(here, '.page-server.pid')
+const LOG = resolve(here, '.page-server.log')
+const PORT = Number(readConfig().port) || 4317
+const URL = `http://127.0.0.1:${PORT}/`
 function depsReady() {
   return existsSync(viteBin)
 }
@@ -53,7 +56,7 @@ async function waitUp(ms = 20000) {
 }
 function start() {
   const out = openSync(LOG, 'a')
-  const child = spawn(viteBin, ['--config', config], { cwd: repo, detached: true, stdio: ['ignore', out, out] })
+  const child = spawn(viteBin, ['--config', config], { cwd: repo, detached: true, stdio: ['ignore', out, out], env: { ...process.env, PAGE_PORT: String(PORT) } })
   writeFileSync(PIDFILE, String(child.pid))
   child.unref()
   return child.pid
