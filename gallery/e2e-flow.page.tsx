@@ -1,5 +1,4 @@
 import { Page, Section, P, Pre, FlowTimeline, FlowCompare, type FlowEvent, type ScreenMap, type FrameMap } from '@page'
-import { Button } from '@turbocharge/catalyst-ui-kit' // a REAL shared component, pulled into a flow
 
 export const meta = { title: 'FlowTimeline (e2e flows)', owner: 'kacper', created: '2026-06-19', status: 'demo' }
 
@@ -20,7 +19,12 @@ const EV: FlowEvent[] = [
 ]
 const DUR = 7.6
 
-/* ── concept screens: live React quiz cards (q4 uses a real catalyst component) ── */
+/* ── inline mock button (illustrative — in a real project import your own component) ── */
+function Button({ children }: { children: React.ReactNode }) {
+  return <button className="w-full justify-center rounded-lg bg-blue-600 px-3 py-2 text-[13px] font-semibold text-white">{children}</button>
+}
+
+/* ── concept screens: live React quiz cards (q4's CTA is a component pulled into the flow) ── */
 function Card({ q, n, options, answer, answered, cta }: { q: string; n: number; options: string[]; answer: number; answered: boolean; cta?: React.ReactNode }) {
   return (
     <div className="flex h-full flex-col bg-slate-900 p-4 text-white">
@@ -40,31 +44,26 @@ const screens: ScreenMap = {
   q2: s => <Card n={2} q="Softmax is applied over which axis?" options={['The keys (per query)', 'The batch', 'The hidden dim']} answer={0} answered={s.index >= 3} />,
   q3: s => <Card n={3} q="Multi-head attention mainly adds…" options={['Multiple representation subspaces', 'More parameters only', 'Dropout']} answer={0} answered={s.index >= 5} />,
   q4: s => <Card n={4} q="Residual connections help by…" options={['Easing gradient flow', 'Removing layernorm', 'Shrinking the model']} answer={0} answered={s.index >= 8}
-    cta={<Button color="blue" className="w-full justify-center">Submit</Button>} />,
+    cta={<Button>Submit</Button>} />,
 }
 
-/* ── replay frames: REAL iphone quiz screenshots, served live by Vite via /@fs ── */
-const SHOTS = '/@fs/home/kacper/projects/Retainit/apps/web/e2e/screenshots/iphone'
+/* ── replay frames: point these at YOUR project's own e2e screenshots ──
+   These placeholder paths won't resolve in the gallery — in a real project you point `frames`
+   at the screenshots your e2e run produced (Vite serves local files via `/@fs/<abs-path>`, or use
+   any URL). The concept track above renders fully live without any screenshots. */
+const SHOTS = '/e2e-screenshots/iphone' // ← replace with your project's screenshot dir
 const frames: FrameMap = {
   q1: `${SHOTS}/07-quiz.png`,
   q2: `${SHOTS}/07-quiz--question-mcs.png`,
   q3: `${SHOTS}/07-quiz--question-ab.png`,
   q4: `${SHOTS}/07-quiz--question-sc.png`,
 }
-// the same journey from DESKTOP screenshots (chromium, 1280×720) — wide frames
-const SHOTS_D = '/@fs/home/kacper/projects/Retainit/apps/web/e2e/screenshots/chromium'
-const desktopFrames: FrameMap = {
-  q1: `${SHOTS_D}/07-quiz.png`,
-  q2: `${SHOTS_D}/07-quiz--question-mcs.png`,
-  q3: `${SHOTS_D}/07-quiz--question-ab.png`,
-  q4: `${SHOTS_D}/07-quiz--question-sc.png`,
-}
 
 export default function E2EFlow() {
   return (
     <Page
       title="FlowTimeline — e2e flows"
-      subtitle="Define a flow once (events + screens or frames). The viewer animates the cursor, plays, and lets you drag the rail or click any event to jump. Concept = live components; replay = real e2e screenshots; compare = both on one scrubber."
+      subtitle="Define a flow once (events + screens or frames). The viewer animates the cursor, plays, and lets you drag the rail or click any event to jump. Concept = live components; replay = your own e2e screenshots; compare = both on one scrubber."
       meta={{ Owner: 'kacper', Created: '2026-06-19', Primitive: '<FlowTimeline> / <FlowCompare>' }}
     >
       <Section title="Defining a flow">
@@ -75,22 +74,22 @@ export default function E2EFlow() {
       </Section>
 
       <Section title="Concept flow — live components">
-        <P>Each screen is live React. The final question's CTA is a <strong>real</strong> shared component — <code>{'<Button>'}</code> from <code>@turbocharge/catalyst-ui-kit</code> — pulled straight into the flow (components-as-template).</P>
+        <P>Each screen is live React — fully portable, renders anywhere with no screenshots. The final question's CTA is a component pulled straight into the flow (components-as-template); here it's an inline mock <code>{'<Button>'}</code>, but in a real project you'd drop in your own shared component.</P>
         <FlowTimeline duration={DUR} events={EV} screens={screens} />
       </Section>
 
-      <Section title="Replay flow — real e2e screenshots">
-        <P>The same journey, frames swapped for actual quiz screenshots from <code>apps/web/e2e/screenshots/iphone</code> (served live by Vite via <code>/@fs</code> — no copying). This is how you visualise a flow after it ships.</P>
+      <Section title="Replay flow — your e2e screenshots">
+        <P>The same journey, frames swapped for real screenshots from an e2e run. <strong>The frame paths below are placeholders</strong> — in your project you point <code>frames</code> at the images your own e2e suite produced (Vite serves local files via <code>/@fs</code>, or use any URL). This is how you visualise a flow after it ships.</P>
         <FlowTimeline duration={DUR} events={EV} frames={frames} />
       </Section>
 
       <Section title="Desktop screenshot flow">
-        <P>The same primitive shows <strong>desktop</strong> screenshots too — pass a wide frame (<code>width</code>/<code>height</code>) and it lays out frame-on-top, controls below. Here: the chromium 1280×720 captures, fit to the frame. This is the main mode for replaying existing desktop screenshot flows.</P>
-        <FlowTimeline duration={DUR} events={EV} frames={desktopFrames} width={640} height={360} fit="contain" label="real desktop e2e screenshots (1280×720)" />
+        <P>The same primitive shows <strong>desktop</strong> screenshots too — pass a wide frame (<code>width</code>/<code>height</code>) and it lays out frame-on-top, controls below. Point <code>frames</code> at your wide captures (e.g. 1280×720) and set <code>fit="contain"</code>.</P>
+        <FlowTimeline duration={DUR} events={EV} frames={frames} width={640} height={360} fit="contain" label="your desktop e2e screenshots" />
       </Section>
 
       <Section title="Compare — concept vs shipped">
-        <P>One scrubber drives both: the live concept on the left, the real screenshots on the right. Step through to see design vs reality at each moment (here: the concept mocked light cards; the shipped quiz is dark — exactly the kind of drift a compare surfaces).</P>
+        <P>One scrubber drives both: the live concept on the left, your real screenshots on the right. Step through to see design vs reality at each moment — exactly the kind of drift a compare surfaces (concept light cards vs a shipped dark quiz, say).</P>
         <FlowCompare duration={DUR} flows={[
           { label: 'concept (live)', events: EV, screens },
           { label: 'shipped (e2e shots)', events: EV, frames },
