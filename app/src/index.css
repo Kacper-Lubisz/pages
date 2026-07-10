@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* FlowTimeline tap ripple */
+@keyframes ft-ripple {
+  from { width: 8px; height: 8px; opacity: 0.9; }
+  to { width: 56px; height: 56px; opacity: 0; }
+}
+.ft-ripple { animation: ft-ripple 0.6s ease-out forwards; }
+
+/* FlowTimeline active-event dot pulse (the "now" marker in the event log) */
+@keyframes ft-now-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--ft-now-ring); }
+  50% { box-shadow: 0 0 0 6px transparent; }
+}
+.ft-now-dot { animation: ft-now-pulse 1.6s ease-in-out infinite; }

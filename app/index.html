@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plans</title>
+</head>
+<body>
+<div id="root"></div>
+<!-- some real app components / deps read process.env.* at import; shim it before any module loads -->
+<script>window.process = window.process || { env: {} };</script>
+<script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
