@@ -1,7 +1,13 @@
 /* TRIAGE ROUND TEMPLATE (thread model) — copy this file to notes/pages/<round-slug>.page.tsx and
    replace the sample data. It encodes the round shape the triage skill (~/.claude/skills/triage/
-   SKILL.md) documents, rendered on the shared <TriageBoard> (./triage-board): ONE comment-first
-   board, one thread per item, keyboard-driven decide-and-advance.
+   SKILL.md) documents, rendered on the shared <TriageBoard>: ONE comment-first board, one thread
+   per item, keyboard-driven decide-and-advance.
+
+   IMPORT PATH — this template file lives in templates/, so it imports `./triage-board` below. A
+   REAL round page lives one level up at notes/pages/<slug>.page.tsx, so once you copy it there you
+   MUST change the import to `./templates/triage-board` (and `import type { Item } from
+   './templates/triage-board'`). Leaving it as `./triage-board` in a copied round page fails on the
+   first run.
 
    How it flows:
      • Your cursor lives in a thread's reply box. Type a note, then a modifier+Enter decides AND
