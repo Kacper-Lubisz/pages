@@ -15,7 +15,8 @@
 //   serve-static              (internal) the static file server ngrok fronts
 //   status                    { vercel, ngrok, shares, baseUrl } for the ShareBar chips
 //
-// Model: ONE Vercel project (turbocharge-pages), ONE production deployment that carries every
+// Model: ONE Vercel project (see PROJECT below — PAGE_SHARE_PROJECT / pages.config.json
+// `shareProject` / default), ONE production deployment that carries every
 // active share under /<slug>/ plus an overview index at /. Production is the only deployment
 // class that Vercel leaves unprotected by default (previews sit behind Vercel auth), and a
 // single prod deploy gives a stable base URL + free content-addressed upload dedup (videos
@@ -38,7 +39,17 @@ const SITE = resolve(SHARE, 'site')
 const OUTPUT = resolve(SITE, '.vercel/output')
 const STATIC = resolve(OUTPUT, 'static')
 const REGISTRY = resolve(SHARE, 'shares.json')
-const PROJECT = process.env.PAGE_SHARE_PROJECT || 'turbocharge-pages'
+// Publish-target Vercel project. Precedence: PAGE_SHARE_PROJECT env →
+// pages.config.json `shareProject` → the personal default. One project carries
+// every active share under /<slug>/ plus the overview index at /.
+const PROJECT = (() => {
+  if (process.env.PAGE_SHARE_PROJECT) return process.env.PAGE_SHARE_PROJECT
+  try {
+    const cfg = JSON.parse(readFileSync(resolve(plansDir, '.config/pages.config.json'), 'utf8'))
+    if (typeof cfg.shareProject === 'string' && cfg.shareProject.trim()) return cfg.shareProject.trim()
+  } catch {}
+  return 'kacpers-pages'
+})()
 const STATIC_PORT = 4319
 // ngrok's local API defaults to 4040 but auto-increments when the port is taken (any node
 // dev server squatting 4040 pushes it to 4041+), so probe a small range and verify the

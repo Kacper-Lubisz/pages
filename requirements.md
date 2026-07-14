@@ -44,7 +44,9 @@ Publishing is optional and off until configured; the local `http://localhost:431
 covers most use.
 
 - **Vercel** — `vercel` CLI installed + authed (`vercel login`), and a Vercel project to publish to.
-  The project name is per-project: set `PAGE_SHARE_PROJECT` or the `pages.config.json` publish target.
+  The project name resolves in this order: the `PAGE_SHARE_PROJECT` env var → the `shareProject`
+  key in `notes/pages/.config/pages.config.json` → the built-in default. The project is created
+  automatically on the first publish (the deploy step runs `vercel project add` if it's missing).
 - **ngrok** — fallback tunnel when Vercel is unavailable.
 - **`gh` CLI** — only for the live `<PrStatus>` component (reads PR state).
 
