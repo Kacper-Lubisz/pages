@@ -20,7 +20,7 @@ publish** it via the Share pipeline (see the `pr-workflow` skill). Don't publish
 
 ## Page server — preflight & status (injected on skill load)
 
-Page server: !`node notes/pages/.page-assets/page-server.mjs preflight`
+Page server: !`node "$HOME/projects/notes/pages/.page-assets/page-server.mjs" preflight`
 
 The line above is **dynamic-context injection** — the `` !`…` `` command runs automatically when this
 skill loads. It runs `preflight`, which **checks** the daemon and prints status JSON but does **not**
@@ -30,12 +30,13 @@ port. Read the JSON:
 - `{ running: true, … }` — the daemon is already up at **http://localhost:4317** (pages at
   `/p/<slug>`, the gallery at `/t/<slug>`). Nothing to do.
 - `{ running: false, ready: true, autostart: false, … }` — deps present but the daemon is down.
-  Start it with `node notes/pages/.page-assets/page-server.mjs up` when you're about to serve a page.
+  Start it with `node ~/projects/notes/pages/.page-assets/page-server.mjs up` when you're about to
+  serve a page.
 - `{ running: false, ready: false, … }` — deps missing; see `requirements.md`.
 
-**Opt into autostart** per project by setting `{ "autostart": true }` in the gitignored
-`notes/pages/.config/pages.config.json` — then `preflight` starts the daemon on load like the old
-`ensure`. `ensure`/`up` still start it explicitly on demand; `down` stops it.
+**Opt into autostart** by setting `{ "autostart": true }` in
+`~/projects/notes/pages/.config/pages.config.json` — then `preflight` starts the daemon on load like
+the old `ensure`. `ensure`/`up` still start it explicitly on demand; `down` stops it.
 
 > ## No templates — compose, don't fill in a skeleton
 > There are deliberately **no archetype templates** ("feature", "bugfix", "report", …). They made
@@ -55,48 +56,70 @@ port. Read the JSON:
   via a PR** — not for internal-only summaries.
 - A prior page exists and needs updating (edit its `*.page.tsx`; the daemon hot-reloads).
 
-## Where the system lives (canonical source + per-project copy)
+## Where the system lives — ONE central store
 
-The **source of truth is this skill** (`~/.claude/skills/pages/`), version-controlled:
+There is a **single store and daemon for every project**, at `~/projects/notes/pages/`. You do
+**not** create a `notes/` dir inside a repo — all pages, regardless of which project you're standing
+in, live centrally. `~/projects` is deliberately **not a git repo**, so pages can never be committed
+by accident.
 
-- `app/` — the Vite app. `src/lib/page-ui.tsx` is the **`@page`** primitive library (imported as
-  `@page`); `src/lib/tab.tsx` is the per-page favicon/title; `src/main.tsx` globs the pages and
-  routes `/` (index) + `/p/<slug>`; `vite.config.mjs` (port 4317, repo aliases, `fs.allow`, the
-  `/api/state`, `/api/asset`, `/api/gh`, `/api/share` endpoints); `vite.config.share.mjs` (the
-  static-export build used by the Share pipeline).
-- `page-assets/` — `page-server.mjs` (daemon CLI), `verify.mjs` (render gate), `share.mjs`
-  (export/publish CLI — see Sharing below).
-- `gallery/` — the live **component gallery** (`components` = every primitive rendered;
-  `e2e-flow`, `review` = the interactive primitives). This replaces the old archetype templates.
-- `bootstrap.mjs` — syncs the three dirs above into a project.
+The **source of truth is this skill** (`~/.claude/skills/pages/`, symlinked to the
+`claude-skills` repo), version-controlled:
 
-Each project gets a **bootstrapped copy** under `notes/pages/` so the daemon runs from the repo's
-own `node_modules` and aliases (needs `vite`, `@vitejs/plugin-react`, `tailwindcss`, `react`):
-`app/`→`.app/`, `page-assets/`→`.page-assets/`, `gallery/`→`templates/` (served at `/t/<slug>`,
-under the index's **Components →** link). `page-server ensure` runs `bootstrap.mjs` before starting
-the daemon (when down), so a (re)start refreshes the copy. Project-local, never overwritten:
+- `app/` — the Vite app. `src/lib/page-ui.tsx` is the **`@page`** primitive library; `src/main.tsx`
+  globs the pages (flat + one level of project subdirs) and routes `/` (index) + `/p/<slug>`;
+  `vite.config.mjs` (port 4317, the **per-page project alias resolver**, `fs.allow`, the
+  `/api/state`, `/api/asset`, `/api/gh`, `/api/share` endpoints); `vite.config.share.mjs`.
+- `page-assets/` — `page-server.mjs` (daemon CLI), `verify.mjs` (render gate), `share.mjs`.
+- `gallery/` — the live **component gallery**.
+- `bootstrap.mjs` — syncs the dirs above into the **central store** (default target `~/projects`, so
+  the store lands at `~/projects/notes/pages/`). `page-server` runs it before (re)starting the daemon.
 
-- `notes/pages/*.page.tsx` — the pages you author. (`*.plan.tsx` is the legacy extension from when
-  this system was plans-only — still globbed and rendered, but write new files as `.page.tsx`.)
-- `notes/pages/<slug>.state.json` — per-page saved state for **interactive** pages (e.g. review
-  boards), read/written through the dev server's `GET/POST /api/state/<slug>`. Plain JSON; safe to
-  read directly to see the user's decisions.
-- `notes/pages/<slug>-assets/` — local image/video attachments for a page, served via
-  `GET /api/asset/<slug>/<file>` (e.g. a `<ReviewStream>` showing screenshots). Drop files in by
-  name; a missing one renders a placeholder, not an error.
-- `notes/pages/.share/` — the Share pipeline's output (exported bundles, the assembled site,
-  `shares.json` registry). Scratch; never committed.
+The central store (bootstrapped copy; `.app/`, `.page-assets/`, `templates/`) runs the daemon from
+its own self-contained `.app/node_modules` (`~/projects` has no `node_modules` — see
+`requirements.md`). Never overwritten by bootstrap:
 
-**To improve the skill, edit the files under `~/.claude/skills/pages/` — NOT the project's
-`notes/pages/.app` copy, which is overwritten on the next daemon (re)start.** After editing the
-skill, run `node ~/.claude/skills/pages/bootstrap.mjs <repo>` to push the change into a running
-project immediately (the daemon hot-reloads), or just restart the daemon. Read
-`~/.claude/skills/pages/app/src/lib/page-ui.tsx` whenever you need exact prop signatures.
+- `~/projects/notes/pages/*.page.tsx` — **project-agnostic** pages (prose + `@page` primitives + SVG).
+  This is the default and the vast majority. (`*.plan.tsx` is the legacy extension — still globbed.)
+- `~/projects/notes/pages/<project>/*.page.tsx` — a page **bound to a project**. Its subdir is the
+  binding: it routes at `/p/<project>/<slug>` and can `import` that project's real components. See
+  **project binding** below.
+- `~/projects/notes/pages/<slug>.state.json` — saved state for **interactive** pages
+  (`GET/POST /api/state/<slug>`). Plain JSON; safe to read to see the user's decisions.
+- `~/projects/notes/pages/<slug>-assets/` — local image/video attachments (`GET /api/asset/…`).
+- `~/projects/notes/pages/.config/projects.json` — the **project registry** (below).
+- `~/projects/notes/pages/.share/` — Share pipeline output. Scratch.
+
+### Project binding — importing a project's real components
+
+Most pages are project-agnostic and need none of this. When a page must import a project's **real
+source components** (`~/…` / `@/…`) or show a live `<PrStatus>`, bind it to that project:
+
+1. Put the file in the project's subdir: `~/projects/notes/pages/<project>/<slug>.page.tsx`.
+2. Ensure `<project>` has an entry in `~/projects/notes/pages/.config/projects.json`:
+   ```json
+   { "monorepo": { "root": "/abs/path/to/repo",
+                   "aliases": { "~": "apps/frontend/src" },
+                   "tailwindContent": ["apps/frontend/src/**/*.{ts,tsx}"] } }
+   ```
+   `aliases` maps the project's import prefixes to sub-paths of `root`; `tailwindContent` are that
+   project's Tailwind globs (unioned into the daemon's JIT scan so imported classes generate).
+3. A Vite plugin resolves those aliases **per importing page** (keyed off the subdir), so one daemon
+   serves pages bound to many different projects. Adding a new project = one registry entry + restart.
+
+**To improve the skill, edit the files under `~/.claude/skills/pages/` (the `claude-skills` repo) —
+NOT the store's `~/projects/notes/pages/.app` copy, which is overwritten on the next daemon
+(re)start.** After editing, run `node ~/.claude/skills/pages/bootstrap.mjs` to refresh the store (the
+daemon hot-reloads), or restart the daemon. Read `app/src/lib/page-ui.tsx` for exact prop signatures.
 
 ## Creating a page
 
 1. Pick a kebab-case slug (e.g. `webhook-dedup`, `dark-mode`). The file is
-   `notes/pages/<slug>.page.tsx`, served at `http://localhost:4317/p/<slug>`.
+   `~/projects/notes/pages/<slug>.page.tsx` (the **central store** — never a `notes/` dir inside a
+   repo), served at `http://localhost:4317/p/<slug>`. Only if the page must import a specific
+   project's real components, put it in that project's subdir
+   (`~/projects/notes/pages/<project>/<slug>.page.tsx`, served at `/p/<project>/<slug>`) and see
+   **project binding** above.
 2. Open the **component gallery** for copy-paste-ready usage of every primitive:
    `http://localhost:4317/t/components`. Skim it before composing so you reach for the right
    primitive, not just `<Cards>` again.
@@ -110,8 +133,9 @@ project immediately (the daemon hot-reloads), or just restart the daemon. Read
 4. **Compose by content shape, not a fixed outline.** Use the content-shape table below. Vary the
    texture — if you've used three `<Cards>` in a row, the fourth list wants a different primitive.
 5. **Print the URL.** The daemon is already running. Optionally confirm with `… page-server.mjs
-   status`, then end your message with the clickable `http://localhost:4317/p/<slug>`. A brand-new
-   file is picked up automatically by the watch plugin.
+   status`, then end your message with the clickable `http://localhost:4317/p/<slug>`. The watch
+   plugin usually picks a brand-new file up on its own, but that can be unreliable — if the URL 404s
+   as `Not found`, restart the daemon (`page-server.mjs down` then `up`) to force a re-glob.
 6. For a **plan awaiting approval**: do not set `approved` on `<Page>` yet — plans start in draft
    (tasks render as bullets, progress hidden). Flip it on user approval — see below. Reports and
    work summaries have nothing to approve; `approved` is irrelevant there unless you want the
@@ -238,10 +262,10 @@ use the **Share pipeline** — from the **ShareBar** at the top of every page (V
 chips + a Share menu; dev daemon only, compiled out of exports), or the CLI:
 
 ```
-node notes/pages/.page-assets/share.mjs publish <slug> [--ttl days]   # → durable public URL
-node notes/pages/.page-assets/share.mjs export <slug>                 # bundle only, no upload
-node notes/pages/.page-assets/share.mjs ngrok-up | ngrok-down         # fallback tunnel
-node notes/pages/.page-assets/share.mjs unpublish <slug> | sweep | status
+node ~/projects/notes/pages/.page-assets/share.mjs publish <slug> [--ttl days]   # → durable public URL
+node ~/projects/notes/pages/.page-assets/share.mjs export <slug>                 # bundle only, no upload
+node ~/projects/notes/pages/.page-assets/share.mjs ngrok-up | ngrok-down         # fallback tunnel
+node ~/projects/notes/pages/.page-assets/share.mjs unpublish <slug> | sweep | status
 ```
 
 How it works: `export` builds a **self-contained static bundle per page** (a generated single-page

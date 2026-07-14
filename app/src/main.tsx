@@ -3,25 +3,43 @@ import './index.css'
 import { Index } from './Index'
 import { setTab } from './lib/tab'
 
-// pages live in notes/pages/*.page.tsx; the component gallery in notes/pages/templates/.
-// *.plan.tsx is the legacy extension — still globbed so pre-rename pages keep rendering;
-// on a slug collision the .page.tsx wins.
+// CENTRAL store: pages live in notes/pages/*.page.tsx (project-agnostic) AND in one level of
+// project subdirs notes/pages/<project>/*.page.tsx (project-bound — the subdir binds the page
+// to a project in .config/projects.json, and a Vite plugin resolves that project's @/ imports).
+// The component gallery is in notes/pages/templates/. *.plan.tsx is the legacy extension —
+// still globbed so pre-rename pages keep rendering; on a slug collision the .page.tsx wins.
+//
+// A project-bound page's slug carries its subdir ("<project>/<name>") so it routes at
+// /p/<project>/<name> and never collides with another project's same-named page. Flat pages
+// keep a bare "<name>" slug. The `templates/` subdir is handled by its own glob/route (/t/),
+// so it is excluded from the project-page glob below.
 //
 // Modules are loaded NON-eagerly and isolated in try/catch: a single page/template that fails
 // to import (e.g. a gallery demo importing a package this project doesn't have) must NOT blank
 // every other page. A broken module is skipped and surfaced as its own error card.
 const pageMods = import.meta.glob('../../*.page.tsx') as Record<string, () => Promise<any>>
 const legacyMods = import.meta.glob('../../*.plan.tsx') as Record<string, () => Promise<any>>
+const projPageMods = import.meta.glob('../../*/*.page.tsx') as Record<string, () => Promise<any>>
+const projLegacyMods = import.meta.glob('../../*/*.plan.tsx') as Record<string, () => Promise<any>>
 const templateMods = import.meta.glob(['../../templates/*.page.tsx', '../../templates/*.plan.tsx']) as Record<string, () => Promise<any>>
 
 type Entry = { slug: string; meta: any; Component: any; error?: string }
-const slugOf = (path: string) => path.split('/').pop()!.replace(/\.(page|plan)\.tsx$/, '')
+// Flat pages → bare name; project subdirs → "<project>/<name>". Strip the leading "../../".
+const slugOf = (path: string) => path.replace(/^(\.\.\/)+/, '').replace(/\.(page|plan)\.tsx$/, '')
+// Templates route under /t/ with a bare basename slug; the project-page glob catches them too
+// (templates is a plain subdir), so they are filtered out of the page registry by this prefix.
+const isTemplatePath = (path: string) => /(^|\/)templates\/[^/]+\.(page|plan)\.tsx$/.test(path)
+const basenameSlug = (path: string) => path.split('/').pop()!.replace(/\.(page|plan)\.tsx$/, '')
 
-async function toRegistry(...modGroups: Record<string, () => Promise<any>>[]): Promise<Entry[]> {
+async function toRegistry(
+  slugFn: (path: string) => string,
+  ...modGroups: Record<string, () => Promise<any>>[]
+): Promise<Entry[]> {
   const bySlug = new Map<string, Entry>()
   for (const mods of modGroups) {
     for (const [path, load] of Object.entries(mods)) {
-      const slug = slugOf(path)
+      if (slugFn === slugOf && isTemplatePath(path)) continue // templates handled by /t/
+      const slug = slugFn(path)
       if (bySlug.has(slug)) continue
       try {
         const mod = await load()
@@ -77,6 +95,9 @@ function makeApp(pages: Entry[], templates: Entry[]) {
 
 const root = createRoot(document.getElementById('root')!)
 root.render(<div className="p-10 font-sans text-slate-400">Loading…</div>)
-Promise.all([toRegistry(pageMods, legacyMods), toRegistry(templateMods)]).then(([pages, templates]) => {
+Promise.all([
+  toRegistry(slugOf, pageMods, projPageMods, legacyMods, projLegacyMods),
+  toRegistry(basenameSlug, templateMods),
+]).then(([pages, templates]) => {
   root.render(<>{(() => { const App = makeApp(pages, templates); return <App /> })()}</>)
 })

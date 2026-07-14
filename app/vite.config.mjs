@@ -16,11 +16,64 @@ const MIME = {
 }
 const cleanSlug = s => String(s || '').replace(/[^a-zA-Z0-9_-]/g, '')
 
-// .app → plans → notes → repo root
+// .app → plans → notes → store root. In the CENTRAL store this is ~/projects/notes/pages →
+// repo = ~/projects (not a git repo — pages can never be committed by accident).
 const here = import.meta.dirname
 const repo = resolve(here, '../../..')
 const plansDir = resolve(here, '..') // notes/pages
 const mainFile = resolve(here, 'src/main.tsx')
+
+// --- Per-page project binding (central store) ------------------------------------------------
+// A page under notes/pages/<project>/… is "bound" to <project>. .config/projects.json maps a
+// project name → { root, aliases?, tailwindContent? }. The projectAlias plugin resolves that
+// project's aliases (e.g. "@" → apps/web/src) against its root, keyed off the IMPORTER — so two
+// pages in two different projects resolve "@/…" to two different source trees under ONE daemon.
+const registry = (() => {
+  try { return JSON.parse(readFileSync(resolve(plansDir, '.config/projects.json'), 'utf8')) } catch { return {} }
+})()
+const projectRoots = Object.values(registry).map(p => p && p.root && resolve(p.root)).filter(Boolean)
+
+// Which registered project owns `file`? Either it is a page in the store's <project>/ subdir,
+// OR it lives under a project's root — the latter so a nested import (a resolved project
+// component importing its OWN "@/…" sibling) resolves against that component's project, not the
+// page's. Longest-root wins when roots nest.
+function projectOf(file) {
+  if (!file) return null
+  const f = resolve(file)
+  if (f.startsWith(plansDir + '/')) {
+    const rel = f.slice(plansDir.length + 1)
+    const seg = rel.split('/')[0]
+    return seg && rel.includes('/') && registry[seg] ? seg : null
+  }
+  let best = null
+  for (const [name, cfg] of Object.entries(registry)) {
+    if (!cfg || !cfg.root) continue
+    const root = resolve(cfg.root) + '/'
+    if (f.startsWith(root) && (!best || root.length > best.len)) best = { name, len: root.length }
+  }
+  return best ? best.name : null
+}
+
+function projectAlias() {
+  return {
+    name: 'per-page-project-alias',
+    enforce: 'pre', // resolve project "@/…" before Vite's static alias plugin
+    async resolveId(source, importer) {
+      if (!importer || source[0] === '\0') return null
+      const proj = projectOf(importer)
+      if (!proj) return null
+      const aliases = registry[proj].aliases || {}
+      for (const [key, sub] of Object.entries(aliases)) {
+        if (source === key || source.startsWith(key + '/')) {
+          const target = resolve(registry[proj].root, sub) + source.slice(key.length)
+          const r = await this.resolve(target, importer, { skipSelf: true })
+          if (r) return r.id
+        }
+      }
+      return null
+    },
+  }
+}
 
 // Plans live in the parent of the Vite root, which the dev watcher doesn't track — so a
 // newly-added *.plan.tsx wouldn't appear without a restart. Watch the plans dir and, on
@@ -108,14 +161,14 @@ function planApi() {
 // the PR number resolves against this repo. Results cached ~20s so a page full of <PrStatus> (and
 // its poll loop) doesn't spawn a `gh` per render. Strictly read-only (`gh pr view`).
 function ghApi() {
-  const cache = new Map() // n -> { at, body }
+  const cache = new Map() // "cwd#n" -> { at, body }
   const TTL = 20_000
-  const run = n =>
+  const run = (n, cwd) =>
     new Promise(resolve => {
       execFile(
         'gh',
         ['pr', 'view', String(n), '--json', 'number,state,isDraft,mergeStateStatus,statusCheckRollup,url,title'],
-        { cwd: repo, timeout: 12_000, maxBuffer: 4 << 20 },
+        { cwd: cwd || repo, timeout: 12_000, maxBuffer: 4 << 20 },
         (err, stdout) => {
           if (err) return resolve({ ok: false, error: String(err.message || err).split('\n')[0] })
           try {
@@ -137,13 +190,19 @@ function ghApi() {
     configureServer(server) {
       server.middlewares.use('/api/gh/pr/', async (req, res, next) => {
         if (req.method !== 'GET') return next()
-        const n = (decodeURIComponent((req.url || '').replace(/^\//, '').split('?')[0]).match(/^\d+$/) || [])[0]
+        const raw = (req.url || '').replace(/^\//, '')
+        const n = (decodeURIComponent(raw.split('?')[0]).match(/^\d+$/) || [])[0]
+        // Optional ?project=<name> → run gh in that bound project's repo (central store: the
+        // daemon's own cwd ~/projects is not a repo, so PR status needs the project's root).
+        const projParam = new URLSearchParams(raw.split('?')[1] || '').get('project')
+        const cwd = projParam && registry[projParam] ? resolve(registry[projParam].root) : repo
         res.setHeader('content-type', 'application/json')
         if (!n) { res.statusCode = 400; return res.end('{"ok":false,"error":"bad pr number"}') }
-        const hit = cache.get(n)
+        const key = `${cwd}#${n}`
+        const hit = cache.get(key)
         const fresh = hit && Date.now() - hit.at < TTL
-        const body = fresh ? hit.body : await run(n)
-        if (!fresh) cache.set(n, { at: Date.now(), body })
+        const body = fresh ? hit.body : await run(n, cwd)
+        if (!fresh) cache.set(key, { at: Date.now(), body })
         res.end(JSON.stringify(body))
       })
     },
@@ -209,6 +268,8 @@ function watchPlans() {
     configureServer(server) {
       server.watcher.add(resolve(plansDir, '*.page.tsx'))
       server.watcher.add(resolve(plansDir, '*.plan.tsx')) // legacy extension
+      server.watcher.add(resolve(plansDir, '*/*.page.tsx')) // project-bound pages
+      server.watcher.add(resolve(plansDir, '*/*.plan.tsx'))
       server.watcher.add(resolve(plansDir, 'templates/*.page.tsx'))
       const onChange = file => {
         if (!file.endsWith('.page.tsx') && !file.endsWith('.plan.tsx')) return
@@ -224,7 +285,7 @@ function watchPlans() {
 
 export default defineConfig({
   root: here,
-  plugins: [react(), planApi(), ghApi(), shareApi(), watchPlans()],
+  plugins: [react(), projectAlias(), planApi(), ghApi(), shareApi(), watchPlans()],
   define: { __PAGE_STATIC__: 'false' },
   resolve: {
     alias: {
@@ -233,15 +294,17 @@ export default defineConfig({
       '@plan': resolve(here, 'src/lib/page-ui.tsx'), // legacy import specifier
       // catalyst imports next/link; stub it so real components render without a Next router
       'next/link': resolve(here, 'src/stubs/next-link.tsx'),
-      // mirror apps/web's @/ alias so plans can import real web components
-      '@': resolve(repo, 'apps/web/src'),
+      // NOTE: project "@/…" imports are resolved per-page by the projectAlias plugin above
+      // (keyed off the importing page's project subdir), NOT by a single static alias — one
+      // daemon serves pages bound to many different projects.
     },
   },
   server: {
     host: '127.0.0.1',
     port: Number(process.env.PAGE_PORT) || 4317, // per-project override so two repos can serve at once
     strictPort: true, // stable URL for the always-on daemon
-    // allow Vite to read real source from anywhere in the repo
-    fs: { allow: [repo] },
+    // allow Vite to read real source from the store root (~/projects) plus any registered
+    // project root outside it, so project-bound pages can import real components.
+    fs: { allow: [repo, ...projectRoots] },
   },
 })
