@@ -201,12 +201,16 @@ createRoot(document.getElementById('root')!).render(<Component />)
 `)
 
   log(`building ${slug} …`)
-  const vite = resolve(repo, 'node_modules/.bin/vite')
+  // Prefer the store's self-contained .app deps (bun-installed); fall back to a legacy
+  // project-local repo install. The store lives under a non-JS ~/projects, so there is no
+  // repo-root node_modules to lean on — never assume a yarn install there. Mirrors page-server.
+  const appVite = resolve(appDir, 'node_modules/.bin/vite')
+  const vite = existsSync(appVite) ? appVite : resolve(repo, 'node_modules/.bin/vite')
   const r = run(vite, ['build', '--config', resolve(appDir, 'vite.config.share.mjs')], {
     cwd: repo, timeout: 180_000,
     env: { ...process.env, PAGE_BUILD_DIR: buildDir, PAGE_OUT_DIR: outDir },
   })
-  if (r.notFound) return { ok: false, reason: 'no-vite', hint: 'yarn install in the repo root' }
+  if (r.notFound) return { ok: false, reason: 'no-vite', hint: 'bun install in ~/projects/notes/pages/.app (see pages/requirements.md)' }
   if (r.code !== 0) return { ok: false, reason: 'build-failed', log: tail(r.stderr || r.stdout, 1200) }
   return { ok: true, title, dist: outDir }
 }
@@ -294,16 +298,25 @@ async function deploy(reg) {
   const t0 = Date.now()
   const r = run('vercel', ['deploy', '--prebuilt', '--prod', '--yes'], { cwd: SITE, timeout: 300_000 })
   if (r.code !== 0) return { ok: false, reason: 'vercel-deploy-failed', log: tail(r.stderr || r.stdout, 1200) }
-  const deploymentUrl = ((r.stdout.match(/https:\/\/\S+/g) || []).pop() || '').replace(/\/$/, '')
+  // vercel CLI 56 prints an api.vercel.com inspector URL (sometimes quote-wrapped) alongside the
+  // browsable deployment URL. Take the last *.vercel.app host that isn't the API endpoint, with
+  // surrounding quotes/trailing slash stripped — never the raw `\S+` match, which caught the quote.
+  const urls = (r.stdout.match(/https:\/\/[^\s"']+/g) || []).map(u => u.replace(/\/$/, ''))
+  const deploymentUrl = [...urls].reverse().find(u => /\.vercel\.app$/.test(u) && !u.includes('api.vercel.com')) || ''
   // Raw deployment URLs sit behind Vercel Authentication by default ("Standard Protection");
   // only the project's stable production domain is public. The CLI never prints that domain,
   // so probe it — this both discovers the base URL and proves viewers can actually open it.
+  // The domain can lag a few seconds behind a fresh prod deploy, so retry before giving up.
   const guess = `https://${PROJECT}.vercel.app`
   const isPublic = await (async () => {
-    try {
-      const p = await fetch(`${guess}/`, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(10_000) })
-      return p.status < 300
-    } catch { return false }
+    for (let i = 0; i < 5; i++) {
+      try {
+        const p = await fetch(`${guess}/`, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(10_000) })
+        if (p.status < 300) return true
+      } catch {}
+      await new Promise(res => setTimeout(res, 2_000))
+    }
+    return false
   })()
   const baseUrl = isPublic ? guess : deploymentUrl
   if (baseUrl) reg.baseUrl = baseUrl

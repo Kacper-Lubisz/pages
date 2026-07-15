@@ -1,0 +1,14 @@
+{
+  "name": "pages-app",
+  "private": true,
+  "description": "Self-contained Vite app + @page library for the central pages store. Installed with `bun install` into the store's .app/ (see requirements.md). Versions are pinned exactly so a fresh install reproduces a known-good daemon build.",
+  "dependencies": {
+    "vite": "8.1.4",
+    "@vitejs/plugin-react": "6.0.3",
+    "tailwindcss": "3.4.19",
+    "postcss": "8.5.19",
+    "autoprefixer": "10.5.3",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  }
+}

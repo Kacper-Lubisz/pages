@@ -18,10 +18,11 @@ node ~/.claude/skills/pages/bootstrap.mjs        # → ~/projects/notes/pages/{.
 2. **The daemon's runtime deps must be resolvable** — `vite`, `@vitejs/plugin-react`,
    `tailwindcss` (v3 — the shipped postcss config is v3), `postcss`, `autoprefixer`, `react`,
    `react-dom`. Because `~/projects` is not a JS project (no `node_modules`), the store uses a
-   **self-contained** install under `.app/node_modules`. Install it once:
+   **self-contained** install under `.app/node_modules`. The `.app` ships a `package.json` with
+   these versions pinned exactly, so `bun` (not yarn/npm — consistent with the monorepo) installs
+   a known-good set. Install it once:
    ```
-   npm install --prefix ~/projects/notes/pages/.app --no-save \
-     vite @vitejs/plugin-react tailwindcss@3 postcss autoprefixer react react-dom
+   cd ~/projects/notes/pages/.app && bun install
    ```
    `depsReady()` also falls back to a repo's own `node_modules/.bin/vite` for a legacy project-local
    store. `preflight` reports `ready: false` (with a pointer here) when neither resolves; `ready:
