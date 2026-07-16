@@ -266,11 +266,12 @@ function watchPlans() {
   return {
     name: 'watch-plans',
     configureServer(server) {
-      server.watcher.add(resolve(plansDir, '*.page.tsx'))
-      server.watcher.add(resolve(plansDir, '*.plan.tsx')) // legacy extension
-      server.watcher.add(resolve(plansDir, '*/*.page.tsx')) // project-bound pages
-      server.watcher.add(resolve(plansDir, '*/*.plan.tsx'))
-      server.watcher.add(resolve(plansDir, 'templates/*.page.tsx'))
+      // Watch the DIRECTORY, not glob patterns: chokidar emits add/unlink for
+      // files under a watched dir (recursively — this covers project-bound
+      // subdirs and templates/), but a glob string passed to .add() is treated
+      // as a literal path and never fires — so newly created pages 404 until
+      // restart. node_modules is excluded by Vite's default watch.ignored.
+      server.watcher.add(plansDir)
       const onChange = file => {
         if (!file.endsWith('.page.tsx') && !file.endsWith('.plan.tsx')) return
         const mods = server.moduleGraph.getModulesByFile(mainFile)
