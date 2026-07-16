@@ -2,6 +2,7 @@
    Aesthetic mirrors the legacy HTML template: white bg, slate ink, single blue accent,
    hairline borders, rounded cards. Author plans by composing these. */
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { marked } from 'marked'
 
 /* ---- static (shared-snapshot) mode ------------------------------------ */
 // __PAGE_STATIC__ is a Vite define: false on the dev daemon, true in share.mjs exports.
@@ -351,6 +352,43 @@ export function UL({ children }: { children: ReactNode }) {
 }
 export function Pre({ children }: { children: ReactNode }) {
   return <pre className="mb-4 overflow-x-auto rounded-md bg-slate-100 px-4 py-3.5 font-mono text-[13px] leading-relaxed text-slate-700">{children}</pre>
+}
+
+// Markdown — render a GitHub-flavored markdown string (headings, bold, code,
+// fenced blocks, lists, tables, links) as styled HTML. Content is trusted (authored
+// in the page source), so it's injected directly. Great for PR bodies / release notes.
+export function Markdown({ children }: { children: string }) {
+  const html = useMemo(
+    () => marked.parse(String(children ?? ''), { async: false, gfm: true }) as string,
+    [children],
+  )
+  return (
+    <div className="mb-4">
+      <style>{`
+        .page-md{color:#334155;font-size:15px;line-height:1.65}
+        .page-md > :first-child{margin-top:0}
+        .page-md h1{font-size:1.55rem;font-weight:700;margin:1.4rem 0 .7rem;color:#0f172a}
+        .page-md h2{font-size:1.25rem;font-weight:700;margin:1.3rem 0 .55rem;color:#0f172a}
+        .page-md h3{font-size:1.05rem;font-weight:600;margin:1.1rem 0 .45rem;color:#0f172a}
+        .page-md p{margin:.6rem 0}
+        .page-md ul{list-style:disc;padding-left:1.4rem;margin:.6rem 0}
+        .page-md ol{list-style:decimal;padding-left:1.4rem;margin:.6rem 0}
+        .page-md li{margin:.25rem 0}
+        .page-md code{background:#f1f5f9;padding:.1rem .35rem;border-radius:4px;font-family:ui-monospace,SFMono-Regular,monospace;font-size:.88em}
+        .page-md pre{background:#f1f5f9;padding:.8rem 1rem;border-radius:6px;overflow-x:auto;margin:.8rem 0}
+        .page-md pre code{background:none;padding:0;font-size:.82rem;line-height:1.5}
+        .page-md a{color:#2563eb;text-decoration:underline}
+        .page-md strong{font-weight:600;color:#0f172a}
+        .page-md em{font-style:italic}
+        .page-md table{border-collapse:collapse;margin:.8rem 0;display:block;overflow-x:auto;font-size:13px}
+        .page-md th,.page-md td{border:1px solid #e2e8f0;padding:.4rem .7rem;text-align:left;vertical-align:top}
+        .page-md th{background:#f8fafc;font-weight:600;color:#0f172a}
+        .page-md hr{border:0;border-top:1px solid #e2e8f0;margin:1.4rem 0}
+        .page-md blockquote{border-left:3px solid #e2e8f0;padding-left:1rem;color:#64748b;margin:.8rem 0}
+      `}</style>
+      <div className="page-md" dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  )
 }
 
 /* ---- multi-page sets (board / plans / tracker) -------------------------
