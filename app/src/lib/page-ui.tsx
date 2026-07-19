@@ -35,7 +35,7 @@ export function Page({ title, subtitle, meta, approved = false, children }: {
     <PageCtx.Provider value={{ approved, register }}>
       <div className="mx-auto flex w-full max-w-[96rem] gap-8 px-6 font-sans text-slate-900 [font-feature-settings:'cv11','ss01'] sm:px-8">
         <SideNav />
-        <div className="min-w-0 flex-1 py-16 sm:py-20">
+        <div data-page-content className="min-w-0 flex-1 py-16 sm:py-20">
           <header className="mb-12">
             {IS_STATIC ? <SnapshotBanner /> : <ShareBar />}
             <h1 className="text-[34px] font-bold leading-tight tracking-[-0.025em] sm:text-4xl">{title}</h1>
@@ -236,7 +236,7 @@ function SnapshotBanner() {
 /* ---- structure -------------------------------------------------------- */
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section data-page-section className="scroll-mt-16">
+    <section>
       <h2 className="mb-3.5 mt-[52px] text-2xl font-bold leading-tight tracking-[-0.015em]">{title}</h2>
       {children}
     </section>
@@ -244,38 +244,59 @@ export function Section({ title, children }: { title: string; children: ReactNod
 }
 
 /* ---- side nav ("On this page") -----------------------------------------
-   Auto-built from the rendered <Section>s: a real left sidebar COLUMN that the
-   main content sits beside (an in-flow flex child of <Page>, sticky as you
-   scroll, hidden below lg so narrow viewports get the full width). Scroll-spied
-   so the current section is highlighted, click to jump. Nothing to author —
-   every page with 2+ sections gets it for free. */
+   Auto-built from the headings rendered in the content column — the page <h1>,
+   <Section> h2s, and h3/h4 subheads (<H3>, <Tasks> titles, <Markdown> headings)
+   — as a leveled, indented index: a real left sidebar COLUMN that the main
+   content sits beside (an in-flow flex child of <Page>, sticky as you scroll,
+   hidden below lg so narrow viewports get the full width). Scroll-spied so the
+   current heading is highlighted, click to jump. Nothing to author — any page
+   with 2+ headings below the title gets it for free. Headings inside overlays
+   and board cards carry data-toc-skip (boards get their own SideNavBoard block
+   instead); decorative bits inside a heading (e.g. the <Tasks> phase chip)
+   carry data-toc-ignore so they stay out of the index label. */
+type TocItem = { id: string; title: string; level: number }
+// indent + size per heading level: h1 (page title) flush and bold, deeper levels step right
+const tocDepthCls: Record<number, string> = {
+  1: 'pl-2 text-[12.5px] font-semibold',
+  2: 'pl-4 text-[12.5px]',
+  3: 'pl-6 text-[12px]',
+  4: 'pl-8 text-[12px]',
+}
 function SideNav() {
-  const [items, setItems] = useState<{ id: string; title: string }[]>([])
+  const [items, setItems] = useState<TocItem[]>([])
   const [active, setActive] = useState('')
   useEffect(() => {
-    const sections = () => Array.from(document.querySelectorAll<HTMLElement>('[data-page-section]'))
+    const headings = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-page-content] :is(h1, h2, h3, h4)'))
+        .filter(el => !el.closest('[data-toc-skip]'))
+    const labelOf = (el: HTMLElement) => {
+      const clone = el.cloneNode(true) as HTMLElement
+      clone.querySelectorAll('[data-toc-ignore]').forEach(n => n.remove())
+      return clone.textContent?.trim() ?? ''
+    }
     const scan = () => {
       const seen = new Set<string>()
-      const list = sections()
+      const list = headings()
         .map(el => {
-          const title = el.querySelector('h2')?.textContent?.trim() ?? ''
+          const title = labelOf(el)
           const base = el.id || title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'section'
           let id = base
           for (let n = 2; seen.has(id); n++) id = `${base}-${n}`
           seen.add(id)
           if (el.id !== id) el.id = id
-          return { id, title }
+          if (!el.style.scrollMarginTop) el.style.scrollMarginTop = '2rem'
+          return { id, title, level: Number(el.tagName[1]) }
         })
         .filter(x => x.title)
-      setItems(prev => (prev.length === list.length && prev.every((p, i) => p.id === list[i].id && p.title === list[i].title) ? prev : list))
+      setItems(prev => (prev.length === list.length && prev.every((p, i) => p.id === list[i].id && p.title === list[i].title && p.level === list[i].level) ? prev : list))
     }
     scan()
-    // childList-only observer: setting el.id above emits attribute mutations we must not loop on
+    // childList-only observer: setting el.id/style above emits attribute mutations we must not loop on
     const mo = new MutationObserver(scan)
     mo.observe(document.body, { childList: true, subtree: true })
     const onScroll = () => {
       let cur = ''
-      for (const el of sections()) if (el.getBoundingClientRect().top < 140) cur = el.id
+      for (const el of headings()) if (el.getBoundingClientRect().top < 140) cur = el.id
       setActive(c => (c === cur ? c : cur))
     }
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -283,11 +304,13 @@ function SideNav() {
     return () => { mo.disconnect(); window.removeEventListener('scroll', onScroll) }
   }, [])
   const boards = useBoards()
-  if (items.length < 2 && boards.length === 0) return null
+  // require real structure below the page title before showing the index
+  const showToc = items.filter(i => i.level >= 2).length >= 2
+  if (!showToc && boards.length === 0) return null
   return (
     <nav aria-label="Sections" className="hidden w-56 shrink-0 pt-16 sm:pt-20 lg:block">
       <div className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border border-slate-200/70 bg-white/85 p-2 shadow-sm backdrop-blur">
-        {items.length >= 2 && (
+        {showToc && (
           <>
             <div className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">On this page</div>
             {items.map(it => (
@@ -299,7 +322,7 @@ function SideNav() {
                   document.getElementById(it.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                   history.replaceState(null, '', `#${it.id}`)
                 }}
-                className={`block truncate rounded-md px-2 py-1 text-[12.5px] no-underline transition ${active === it.id ? 'bg-blue-600/8 font-semibold text-blue-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+                className={`block truncate rounded-md py-1 pr-2 no-underline transition ${tocDepthCls[Math.min(Math.max(it.level, 1), 4)]} ${active === it.id ? 'bg-blue-600/8 font-semibold text-blue-700' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
               >
                 {it.title}
               </a>
@@ -1629,7 +1652,7 @@ export function Tasks({ phase, title, items }: { phase?: string; title?: ReactNo
     <>
       {(phase || title) && (
         <h3 className="mb-2.5 mt-7 text-[17px] font-semibold">
-          {phase && <span className="mr-2.5 inline-block rounded bg-blue-600/8 px-2.5 py-[3px] align-middle text-[11px] font-semibold uppercase tracking-wide text-blue-600">{phase}</span>}
+          {phase && <span data-toc-ignore className="mr-2.5 inline-block rounded bg-blue-600/8 px-2.5 py-[3px] align-middle text-[11px] font-semibold uppercase tracking-wide text-blue-600">{phase}</span>}
           {title}
         </h3>
       )}
@@ -2112,7 +2135,7 @@ export function ReviewStream({ slug, messages: authored }: { slug: string; messa
   )
 
   return (
-    <div onPointerDownCapture={() => claimStream(uid)}>
+    <div data-toc-skip onPointerDownCapture={() => claimStream(uid)}>
       {IS_STATIC && (
         <div className="mb-4 rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <strong>⚠ Read-only snapshot — this board can’t save.</strong> This is a shared static
@@ -2442,6 +2465,7 @@ export function Modal({ open, title, onClose, children, width = 940 }: {
   if (!open) return null
   return (
     <div
+      data-toc-skip
       className="fixed inset-0 z-[9998] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 py-[6vh] motion-safe:animate-[fadeIn_120ms_ease-out] supports-[backdrop-filter]:backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
@@ -2550,7 +2574,7 @@ export function DecisionItem({ id, title, tag, rec, recNote, details, detailsWid
   const d = decisions[id]
   const ring = d === 'go' ? 'border-green-300' : d === 'defer' ? 'border-amber-300' : d === 'nogo' ? 'border-red-300' : 'border-slate-200'
   return (
-    <div id={`d-${id}`} className={`scroll-mt-24 rounded-2xl border bg-white p-5 shadow-sm transition ${ring}`}>
+    <div id={`d-${id}`} data-toc-skip className={`scroll-mt-24 rounded-2xl border bg-white p-5 shadow-sm transition ${ring}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

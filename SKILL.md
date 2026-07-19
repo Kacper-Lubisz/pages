@@ -164,10 +164,12 @@ Import what you use: `import { Page, Section, P, ... } from '@page'`. (Legacy al
   fixed left sidebar (the "On this page" nav) + a main column that **fills the remaining width** —
   every block spans that same width; nothing breaks out wider. `meta.icon` sets the tab favicon.
 - **`<Section title>`** / **`<H3>`** / **`<P>`** / **`<UL>`** / **`<Pre>`** — structure + prose
-  (`<P>`/`<UL>` style nested `<code>`, `<strong>`, `<a>`). Pages with 2+ `<Section>`s automatically
-  get the **left "On this page" sidebar column** (persistent on `lg`+ viewports, collapsed on
-  narrow ones) with scroll-spy + jump links — nothing to author, just use real `<Section>`s for
-  top-level structure.
+  (`<P>`/`<UL>` style nested `<code>`, `<strong>`, `<a>`). Pages with 2+ headings below the title
+  automatically get the **left "On this page" sidebar column** (persistent on `lg`+ viewports,
+  collapsed on narrow ones): a leveled index of every rendered heading — the page `h1`, `<Section>`
+  `h2`s, and `h3`/`h4` subheads (`<H3>`, `<Tasks>` titles, `<Markdown>` headings) indented by
+  level — with scroll-spy + jump links. Nothing to author, just use real `<Section>`s/`<H3>`s for
+  structure. (Headings inside modals and board cards are excluded; boards get their own nav block.)
 - **`<PageTabs tabs current>`** / **`<PageLink slug>`** / **`<TrackerStatus s>`** — multi-page
   sets: the tab strip linking sibling pages (a triage round's board / plans / tracker), in-daemon
   links to other pages, and the tracker-status chip vocabulary (`merged` / `in-review` / `branch`
