@@ -290,9 +290,21 @@ function SideNav() {
         .filter(x => x.title)
       setItems(prev => (prev.length === list.length && prev.every((p, i) => p.id === list[i].id && p.title === list[i].title && p.level === list[i].level) ? prev : list))
     }
-    scan()
+    // Heading ids only exist after scan() runs, which is after the browser's
+    // native jump-to-#hash on document load — so honor the initial hash
+    // ourselves, once, as soon as its target id materialises.
+    let hashHonored = false
+    const honorHash = () => {
+      if (hashHonored) return
+      const id = decodeURIComponent(window.location.hash.slice(1))
+      if (!id) { hashHonored = true; return }
+      const el = document.getElementById(id)
+      if (el) { el.scrollIntoView({ block: 'start' }); hashHonored = true }
+    }
+    const scanAndHonor = () => { scan(); honorHash() }
+    scanAndHonor()
     // childList-only observer: setting el.id/style above emits attribute mutations we must not loop on
-    const mo = new MutationObserver(scan)
+    const mo = new MutationObserver(scanAndHonor)
     mo.observe(document.body, { childList: true, subtree: true })
     const onScroll = () => {
       let cur = ''
