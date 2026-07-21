@@ -370,8 +370,10 @@ export function H3({ children }: { children: ReactNode }) {
 export function P({ children }: { children: ReactNode }) {
   return <p className="mb-3.5 leading-relaxed [&_a]:text-blue-600 [&_a]:underline [&_a]:underline-offset-2 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-px [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-slate-700">{children}</p>
 }
-export function UL({ children }: { children: ReactNode }) {
-  return <ul className="mb-4 list-disc space-y-1 pl-6 leading-relaxed marker:text-slate-400 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-px [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-slate-700 [&_strong]:font-semibold">{children}</ul>
+export function UL({ children, items }: { children?: ReactNode; items?: ReactNode[] }) {
+  // `items` is an authoring convenience (and a real-world footgun repair: pages have
+  // passed items={[…]} expecting it to work, and the list silently rendered empty).
+  return <ul className="mb-4 list-disc space-y-1 pl-6 leading-relaxed marker:text-slate-400 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-px [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-slate-700 [&_strong]:font-semibold">{items ? items.map((x, i) => <li key={i}>{x}</li>) : children}</ul>
 }
 export function Pre({ children }: { children: ReactNode }) {
   return <pre className="mb-4 overflow-x-auto rounded-md bg-slate-100 px-4 py-3.5 font-mono text-[13px] leading-relaxed text-slate-700">{children}</pre>
