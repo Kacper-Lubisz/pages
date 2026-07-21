@@ -456,6 +456,180 @@ export function TrackerStatus({ s }: { s: keyof typeof trackerTone | (string & {
   return <Pill tone={t.tone}>{t.label}</Pill>
 }
 
+/* ---- Linear ticket ------------------------------------------------------
+   A ticket rendered the way Linear renders an issue: status donut + identifier +
+   title header, a property-chip row (status, assignee, team, project, parent,
+   labels), the description as real markdown (via <Markdown>, so it reads exactly
+   as it does in Linear), then attachment chips, related-issue chips, and
+   sub-issue rows. Status names cover the workspace vocabulary below; unknown
+   names fall back via `statusType` (Linear's backlog/unstarted/started/
+   completed/canceled) so custom state names on other teams still get the right
+   icon + color. Provenance is explicit and unmissable in both directions:
+   a ticket WITH an `id` is a mirror of a real Linear issue and wears a quiet
+   "mirrored from Linear · <fetched>" stamp (pass `fetched` with the pull date);
+   a ticket WITHOUT an `id` is a DRAFT that exists only on the page — amber
+   dashed border, "DRAFT — not yet in Linear" badge, and an amber footer — for
+   planning pages that show a paste-ready ticket before it is filed. */
+type TicketDot =
+  | { kind: 'dashed'; color: string }
+  | { kind: 'hollow'; color: string }
+  | { kind: 'pie'; color: string; frac: number }
+  | { kind: 'done'; color: string }
+  | { kind: 'x'; color: string }
+const ticketStatusSpec: Record<string, TicketDot> = {
+  Triage: { kind: 'hollow', color: '#6e79d6' },
+  Backlog: { kind: 'dashed', color: '#bec2c8' },
+  Todo: { kind: 'hollow', color: '#b8bcc4' },
+  'In Progress': { kind: 'pie', color: '#f2c94c', frac: 0.5 },
+  'In Review': { kind: 'pie', color: '#26b5ce', frac: 0.75 },
+  'PR Feedback Loop': { kind: 'pie', color: '#f2994a', frac: 0.75 },
+  Paused: { kind: 'pie', color: '#95a2b3', frac: 0.5 },
+  Done: { kind: 'done', color: '#5e6ad2' },
+  Canceled: { kind: 'x', color: '#95a2b3' },
+  Duplicate: { kind: 'x', color: '#95a2b3' },
+}
+const ticketTypeSpec: Record<string, TicketDot> = {
+  triage: ticketStatusSpec.Triage,
+  backlog: ticketStatusSpec.Backlog,
+  unstarted: ticketStatusSpec.Todo,
+  started: ticketStatusSpec['In Progress'],
+  completed: ticketStatusSpec.Done,
+  canceled: ticketStatusSpec.Canceled,
+  duplicate: ticketStatusSpec.Duplicate,
+}
+function TicketStatusDot({ spec, size = 14 }: { spec: TicketDot; size?: number }) {
+  const c = size / 2
+  const r = c - 1.5
+  const wedge = (frac: number) => {
+    const a = frac * 2 * Math.PI - Math.PI / 2
+    const rw = r - 1.75
+    return `M${c},${c} L${c},${c - rw} A${rw},${rw} 0 ${frac > 0.5 ? 1 : 0} 1 ${c + rw * Math.cos(a)},${c + rw * Math.sin(a)} Z`
+  }
+  const inner = (() => {
+    if (spec.kind === 'dashed') {
+      return <circle cx={c} cy={c} r={r} fill="none" stroke={spec.color} strokeWidth="1.6" strokeDasharray="2 1.7" />
+    } else if (spec.kind === 'hollow') {
+      return <circle cx={c} cy={c} r={r} fill="none" stroke={spec.color} strokeWidth="1.6" />
+    } else if (spec.kind === 'pie') {
+      return <>
+        <circle cx={c} cy={c} r={r} fill="none" stroke={spec.color} strokeWidth="1.6" />
+        <path d={spec.frac >= 1 ? '' : wedge(spec.frac)} fill={spec.color} />
+      </>
+    } else if (spec.kind === 'done') {
+      return <>
+        <circle cx={c} cy={c} r={r + 0.75} fill={spec.color} />
+        <path d={`M${c - r * 0.52},${c} l${r * 0.36},${r * 0.42} l${r * 0.66},${r * -0.78}`} fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    } else if (spec.kind === 'x') {
+      return <>
+        <circle cx={c} cy={c} r={r + 0.75} fill={spec.color} />
+        <path d={`M${c - r * 0.42},${c - r * 0.42} L${c + r * 0.42},${c + r * 0.42} M${c + r * 0.42},${c - r * 0.42} L${c - r * 0.42},${c + r * 0.42}`} stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
+      </>
+    } else {
+      throw new Error(`unknown ticket dot ${(spec satisfies never as TicketDot).kind}`)
+    }
+  })()
+  return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" aria-hidden>{inner}</svg>
+}
+function TicketChip({ href, title, children }: { href?: string; title?: string; children: ReactNode }) {
+  const cls = 'inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-[3px] text-[12px] font-medium text-slate-600 no-underline'
+  return href
+    ? <a href={href} target="_blank" rel="noreferrer" className={`${cls} hover:border-slate-300 hover:text-slate-900`} title={title}>{children}</a>
+    : <span className={cls} title={title}>{children}</span>
+}
+type TicketRef = { id: string; title?: ReactNode; url?: string; status?: string; statusType?: string }
+function ticketDotFor(status?: string, statusType?: string): TicketDot {
+  return (status && ticketStatusSpec[status]) || (statusType && ticketTypeSpec[statusType]) || ticketStatusSpec.Todo
+}
+export function LinearTicket({ id, url, title, status, statusType, assignee, team, project, parent, relations, subIssues, links, labels, markdown, fetched, children }: {
+  id?: string; url?: string; title: ReactNode
+  status?: string; statusType?: string
+  assignee?: string; team?: string
+  project?: { name: string; url?: string; icon?: ReactNode }
+  parent?: TicketRef
+  relations?: TicketRef[]
+  subIssues?: TicketRef[]
+  links?: { label: ReactNode; url: string }[]
+  labels?: ReactNode[]
+  markdown?: string
+  /** when the data was pulled from Linear — shown in the "mirrored from Linear" stamp on filed tickets */
+  fetched?: string
+  children?: ReactNode
+}) {
+  const dot = ticketDotFor(status, statusType)
+  const isDraft = !id
+  const initials = assignee ? assignee.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() : null
+  const subRow = (t: TicketRef, tag?: string) => (
+    <div key={t.id} className="flex min-w-0 items-center gap-2.5 py-[7px] text-[13px]">
+      {tag
+        ? <span className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">{tag}</span>
+        : <TicketStatusDot spec={ticketDotFor(t.status, t.statusType)} size={13} />}
+      <a href={t.url} target="_blank" rel="noreferrer" className="shrink-0 font-mono text-[12px] font-semibold text-slate-500 no-underline hover:text-blue-600">{t.id}</a>
+      <span className="min-w-0 truncate text-slate-700">{t.title}</span>
+      {t.status && <span className="ml-auto shrink-0 text-[11px] font-medium text-slate-400">{t.status}</span>}
+    </div>
+  )
+  return (
+    <div data-toc-skip className={`mb-5 overflow-hidden rounded-xl bg-white shadow-sm ${isDraft ? 'border-2 border-dashed border-amber-400/80' : 'border border-slate-200'}`}>
+      <div className={`border-b px-5 pb-3.5 pt-4 ${isDraft ? 'border-amber-200/80 bg-amber-50/70' : 'border-slate-100'}`}>
+        <div className="flex items-center gap-2">
+          <TicketStatusDot spec={dot} />
+          {id
+            ? <a href={url} target="_blank" rel="noreferrer" className="font-mono text-[13px] font-semibold text-slate-500 no-underline hover:text-blue-600">{id}</a>
+            : <span className="rounded border border-dashed border-amber-500/60 bg-amber-100/90 px-2 py-px text-[10px] font-bold uppercase tracking-wider text-amber-800">Draft — not yet in Linear</span>}
+          {parent && (
+            <span className="min-w-0 truncate text-[12px] text-slate-400">
+              ‹ <a href={parent.url} target="_blank" rel="noreferrer" className="text-slate-400 no-underline hover:text-blue-600">{parent.id}{parent.title ? <> · {parent.title}</> : null}</a>
+            </span>
+          )}
+          {isDraft
+            ? <span className="ml-auto shrink-0 text-[11px] font-semibold text-amber-700">exists only on this page</span>
+            : (
+              <a href={url} target="_blank" rel="noreferrer" title="This card mirrors the live issue in Linear — open it there" className="ml-auto flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-slate-400 no-underline hover:text-blue-600">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
+                mirrored from Linear{fetched ? ` · ${fetched}` : ''}
+              </a>
+            )}
+        </div>
+        <div className="mt-1.5 text-[17px] font-semibold leading-snug tracking-[-0.01em]">
+          {url ? <a href={url} target="_blank" rel="noreferrer" className="text-slate-900 no-underline hover:text-blue-700">{title}</a> : title}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {status && <TicketChip><TicketStatusDot spec={dot} size={12} />{status}</TicketChip>}
+          {assignee && <TicketChip title={assignee}><span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500 text-[8px] font-bold text-white">{initials}</span>{assignee}</TicketChip>}
+          {team && <TicketChip>{team}</TicketChip>}
+          {project && <TicketChip href={project.url} title="Linear project">{project.icon && <span className="text-[12px] leading-none">{project.icon}</span>}{project.name}</TicketChip>}
+          {labels?.map((l, i) => <TicketChip key={i}><span className="h-2 w-2 rounded-full bg-slate-300" />{l}</TicketChip>)}
+        </div>
+      </div>
+      <div className="px-5 py-4">
+        {markdown ? <Markdown>{markdown}</Markdown> : children}
+      </div>
+      {isDraft && (
+        <div className="border-t border-dashed border-amber-300/80 bg-amber-50/70 px-5 py-2.5 text-[12px] font-medium text-amber-800">
+          ✎ This is a draft — it has not been filed in Linear. Once filed, swap in the real <code className="rounded bg-amber-100 px-1 font-mono text-[11px]">id</code>, <code className="rounded bg-amber-100 px-1 font-mono text-[11px]">url</code>, and <code className="rounded bg-amber-100 px-1 font-mono text-[11px]">status</code> so the card becomes a mirror.
+        </div>
+      )}
+      {links && links.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 border-t border-slate-100 px-5 py-3">
+          {links.map((l, i) => (
+            <TicketChip key={i} href={l.url} title={l.url}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+              {l.label}
+            </TicketChip>
+          ))}
+        </div>
+      )}
+      {((relations && relations.length > 0) || (subIssues && subIssues.length > 0)) && (
+        <div className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/70 px-5 py-1.5">
+          {relations?.map(r => subRow(r, 'related'))}
+          {subIssues?.map(s => subRow(s))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ---- Wide (deprecated no-op) ------------------------------------------
    Was: break a block out of the prose column and center it wider. That
    breakout is GONE — the content column now fills the width beside the left

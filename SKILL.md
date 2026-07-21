@@ -175,6 +175,16 @@ Import what you use: `import { Page, Section, P, ... } from '@page'`. (Legacy al
   links to other pages, and the tracker-status chip vocabulary (`merged` / `in-review` / `branch`
   / `plan` / `awaiting` / `blocked`). See the triage template at `/t/triage` and the **triage
   skill** (`~/.claude/skills/triage/SKILL.md`), which owns the round process.
+- **`<LinearTicket id url title status assignee team project parent relations subIssues links markdown fetched>`**
+  — a ticket rendered with real Linear chrome: status donut + identifier + title, property chips
+  (status/assignee/team/project), the description from actual Linear markdown (`markdown` prop, or
+  JSX `children`), attachment chips, related-issue chips, sub-issue rows. Provenance is explicit in
+  both directions: a card **with an `id` is a mirror** of a real issue — pull the values via the
+  Linear MCP (`get_issue`/`get_project`), never hand-write statuses or URLs, and pass `fetched`
+  (the pull date) so the "mirrored from Linear · date" stamp shows how fresh the snapshot is. A card
+  **without an `id` is a DRAFT** — amber dashed border, "DRAFT — not yet in Linear" badge and footer —
+  for paste-ready tickets that don't exist yet; after filing, swap in the real id/url/status.
+  Unknown status names fall back by `statusType` (backlog/unstarted/started/completed/canceled).
 - **`<Gallery cols={2|3|4}>` + `<GalleryItem label>`** — responsive grid for side-by-side artifacts
   (device mockups, option frames, before/after screens). Each child gets its own cell + real gap.
   Fills the content column like every other block.
@@ -223,6 +233,7 @@ Import what you use: `import { Page, Section, P, ... } from '@page'`. (Legacy al
 | chronological events / RCA                     | `<Timeline>`                                            |
 | a stepped flow through screens over time       | `<FlowTimeline>`                                        |
 | triaging a list of findings into go/no-go      | `<ReviewStream>`                                        |
+| a Linear ticket — filed or a paste-ready draft | `<LinearTicket>` (real statuses/links via Linear MCP)   |
 | finished work + demo (PR summary)              | `<Stats>` for the win, `<BeforeAfter>`/`<FlowTimeline>` for the demo, `<Tasks done>` for scope |
 
 ## Designing diagrams that teach

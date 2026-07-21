@@ -3,7 +3,7 @@
    in any project with zero external deps. In a real project you swap these for your OWN components
    once the per-project coupling config is set (the `@` alias + Tailwind content globs) — that's the
    actual feature this page demonstrates. A clean reference, not a flow. */
-import { Page, Section, P, Mockup, PrStatus } from '@page'
+import { Page, Section, P, Mockup, PrStatus, LinearTicket } from '@page'
 
 export const meta = { title: 'Component library', owner: 'kacper', created: '2026-06-19', status: 'reference' }
 
@@ -103,6 +103,49 @@ export default function Components() {
         <Mockup bar="import { Spinner, EmptyState } from '@app/components/...'">
           <Row label="spinner"><Spinner size={20} /><Spinner size={32} /></Row>
           <div className="mt-3"><EmptyState title="No saves yet" description="Items you save show up here." ctaText="Browse library" ctaLink="#" /></div>
+        </Mockup>
+      </Section>
+
+      <Section title="LinearTicket — an issue rendered the way Linear renders it">
+        <P>
+          <code>{'<LinearTicket>'}</code> — a <code>@page</code> primitive for showing a ticket
+          (filed or drafted) with real Linear chrome: status donut + identifier + title, a
+          property-chip row (status, assignee, team, project), the description from{' '}
+          <strong>actual Linear markdown</strong> (<code>markdown</code> prop, or compose JSX via{' '}
+          <code>children</code>), then attachment chips, related-issue chips, and sub-issue rows.
+          Statuses cover the usual vocabulary (Triage · Backlog · Todo · In Progress · In Review ·
+          PR Feedback Loop · Paused · Done · Canceled · Duplicate) and fall back by{' '}
+          <code>statusType</code> (<em>backlog / unstarted / started / completed / canceled</em>)
+          for custom names. <strong>Provenance is explicit both ways:</strong> a card with an{' '}
+          <code>id</code> mirrors a real issue and wears a "mirrored from Linear · date" stamp
+          (pass <code>fetched</code>); omit <code>id</code> and the card is unmistakably a{' '}
+          <strong>draft</strong> — amber dashed border, "DRAFT — not yet in Linear" badge, and a
+          footer telling you to swap in the real id/url/status once filed.
+        </P>
+        <Mockup bar="import { LinearTicket } from '@page'">
+          <LinearTicket
+            id="OPT-1624"
+            url="https://linear.app/tessl/issue/OPT-1624"
+            title="Onboarding: demo that a delightful self-serve onboarding is within reach"
+            status="In Review"
+            assignee="Kacper Lubisz"
+            team="Optimise"
+            project={{ name: 'Self-Serve Onboarding', icon: '🚀', url: 'https://linear.app/tessl/project/self-serve-onboarding-9a1a7b4f2fe8' }}
+            relations={[{ id: 'OPT-1622', title: 'Tessl Agent: investigate current state and write a report', url: '#', status: 'In Review' }]}
+            subIssues={[
+              { id: 'OPT-1625', title: 'Survey hypothesis: optionally surveying users yields value', status: 'Backlog', url: '#' },
+              { id: 'OPT-1626', title: 'Survey hypothesis: adding a survey to onboarding reduces churn', status: 'Backlog', url: '#' },
+            ]}
+            links={[{ label: 'Demo output — tezz report', url: '#' }]}
+            fetched="21 Jul 2026"
+            markdown={'## Why\n\nHypothesis testing — before investing in the real thing, prove **onboarding can be delightful at all**.\n\n## Deliverable\n\n* The demo itself\n* A Joy verdict on H1 — outcome pending'}
+          />
+          <LinearTicket
+            title="A ticket still being drafted — no id yet, so the whole card says so"
+            status="Todo"
+            team="Optimise"
+            markdown={'One-paragraph draft body. File it, then swap in the `id`/`url` and real status — the amber chrome disappears and the card becomes a mirror.'}
+          />
         </Mockup>
       </Section>
 
