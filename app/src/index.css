@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pages are light-themed: force a white canvas so no OS/browser dark mode ever tints them
+   (applies to the live daemon and to every shared static export). */
+html { color-scheme: light; }
+html, body { background: #ffffff; }
+
 /* FlowTimeline tap ripple */
 @keyframes ft-ripple {
   from { width: 8px; height: 8px; opacity: 0.9; }
