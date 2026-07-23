@@ -18,6 +18,51 @@ declare global {
 }
 const IS_STATIC = typeof __PAGE_STATIC__ !== 'undefined' && __PAGE_STATIC__
 
+/* ---- theme (light / dark / system) ------------------------------------ */
+// The skill owns dark mode: pages are authored with standard light Tailwind classes and
+// index.css remaps them under html.dark. Default follows the OS; the top-right toggle
+// overrides it (persisted in localStorage). Works in the dev daemon AND static exports.
+type ThemeMode = 'system' | 'light' | 'dark'
+const THEME_KEY = 'pages-theme'
+const readThemeMode = (): ThemeMode => {
+  try { const v = localStorage.getItem(THEME_KEY); return v === 'light' || v === 'dark' ? v : 'system' } catch { return 'system' }
+}
+const systemDark = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches
+const applyThemeMode = (m: ThemeMode) => {
+  document.documentElement.classList.toggle('dark', m === 'dark' || (m === 'system' && systemDark()))
+}
+if (typeof document !== 'undefined') {
+  applyThemeMode(readThemeMode())
+  try {
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (readThemeMode() === 'system') applyThemeMode('system')
+    })
+  } catch { /* older browsers */ }
+}
+
+function ThemeToggle() {
+  const [mode, setMode] = useState<ThemeMode>(readThemeMode)
+  const NEXT: Record<ThemeMode, ThemeMode> = { system: 'light', light: 'dark', dark: 'system' }
+  const ICON: Record<ThemeMode, string> = { system: '◐', light: '☀', dark: '☾' }
+  const cycle = () => {
+    const m = NEXT[mode]
+    setMode(m)
+    try { m === 'system' ? localStorage.removeItem(THEME_KEY) : localStorage.setItem(THEME_KEY, m) } catch { /* private mode */ }
+    applyThemeMode(m)
+  }
+  return (
+    <button
+      onClick={cycle}
+      title={`Theme: ${mode} — click to change`}
+      aria-label={`Theme: ${mode}. Click to change.`}
+      className="fixed right-4 top-4 z-40 inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-500 shadow-sm hover:border-slate-300 hover:text-slate-700"
+    >
+      <span aria-hidden className="text-sm leading-none">{ICON[mode]}</span>
+      {mode}
+    </button>
+  )
+}
+
 /* ---- progress + approval context -------------------------------------- */
 type Register = (id: string, done: number, total: number) => void
 const PageCtx = createContext<{ approved: boolean; register: Register }>({ approved: false, register: () => {} })
@@ -34,6 +79,7 @@ export function Page({ title, subtitle, meta, approved = false, children }: {
   return (
     <PageCtx.Provider value={{ approved, register }}>
       <div className="mx-auto flex w-full max-w-[96rem] gap-8 px-6 font-sans text-slate-900 [font-feature-settings:'cv11','ss01'] sm:px-8">
+        <ThemeToggle />
         <SideNav />
         <div data-page-content className="min-w-0 flex-1 py-16 sm:py-20">
           <header className="mb-12">

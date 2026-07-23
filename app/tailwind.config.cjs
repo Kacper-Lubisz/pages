@@ -17,6 +17,7 @@ const projectContent = Object.values(registry).flatMap(p =>
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     resolve(here, 'index.html'),
     resolve(here, 'src/**/*.{ts,tsx}'),
