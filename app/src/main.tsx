@@ -66,6 +66,55 @@ function ErrorCard({ slug, error }: { slug: string; error: string }) {
   )
 }
 
+const MAX_SIMILAR_PAGES = 6
+
+const toWords = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+
+function findSimilarEntries(slug: string, entries: Entry[]) {
+  const wanted = new Set(toWords(slug))
+  return entries
+    .map(entry => ({ entry, score: toWords(`${entry.slug} ${entry.meta?.title ?? ''}`).filter(word => wanted.has(word)).length }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_SIMILAR_PAGES)
+    .map(({ entry }) => entry)
+}
+
+function NotFound({ route, slug, entries }: { route: 'p' | 't'; slug: string; entries: Entry[] }) {
+  const similar = findSimilarEntries(slug, entries)
+  const indexHref = route === 't' ? '/templates' : '/'
+  return (
+    <div className="flex min-h-screen items-start justify-center bg-slate-50 px-6 py-20 font-sans text-slate-900">
+      <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="font-mono text-sm font-semibold text-slate-400">404</div>
+        <h1 className="mt-1 text-2xl font-bold">Page not found</h1>
+        <p className="mt-3 text-[15px] leading-relaxed text-slate-600">
+          There’s no page at <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[13px] text-slate-800">/{route}/{slug}</code>.
+          If it’s being written right now, this tab reloads by itself as soon as the file appears.
+        </p>
+        {similar.length > 0 && (
+          <div className="mt-6">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Similar pages</div>
+            <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200">
+              {similar.map(entry => (
+                <li key={entry.slug}>
+                  <a href={`/${route}/${entry.slug}`} className="flex items-baseline justify-between gap-3 px-3 py-2 hover:bg-slate-50">
+                    <span className="font-medium text-slate-800">{entry.meta?.title || entry.slug}</span>
+                    <span className="truncate font-mono text-[12px] text-slate-400">{entry.slug}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <a href={indexHref} className="mt-6 inline-block text-[14px] font-medium text-blue-600 hover:underline">
+          ← All {route === 't' ? 'templates' : 'pages'}
+        </a>
+      </div>
+    </div>
+  )
+}
+
 function makeApp(pages: Entry[], templates: Entry[]) {
   const byRoute: Record<string, Entry[]> = { p: pages, t: templates }
   return function App() {
@@ -81,8 +130,8 @@ function makeApp(pages: Entry[], templates: Entry[]) {
         const C = e.Component
         return <C />
       }
-      setTab({ title: 'Not found', slug: m[2] })
-      return <div className="p-10 font-sans text-slate-900">Not found: <code>{m[2]}</code> · <a href="/" className="text-blue-600 underline">index</a></div>
+      setTab({ title: 'Page not found', slug: m[2] })
+      return <NotFound route={m[1] === 't' ? 't' : 'p'} slug={decodeURIComponent(m[2])} entries={byRoute[m[1]] ?? []} />
     }
     if (location.pathname === '/templates') {
       setTab({ title: 'Components', slug: 'templates', icon: '🧩' })

@@ -63,10 +63,47 @@ function start() {
 }
 function pid() { return existsSync(PIDFILE) ? Number(readFileSync(PIDFILE, 'utf8').trim()) : null }
 
+// QR short links (qr-short-links.mjs) run beside the daemon, on the LAN address, so a phone can
+// open short codes. The daemon itself stays on 127.0.0.1. On by default; opt out with
+// "shortLinks": false in pages.config.json.
+const SHORT_LINKS_SCRIPT = resolve(here, 'qr-short-links.mjs')
+const SHORT_LINKS_STATE = resolve(here, '.short-links.json')
+const SHORT_LINKS_LOG = resolve(here, '.short-links.log')
+function shortLinksState() {
+  try {
+    const state = JSON.parse(readFileSync(SHORT_LINKS_STATE, 'utf8'))
+    process.kill(state.pid, 0) // throws if the process is gone
+    return state
+  } catch {
+    return null
+  }
+}
+async function ensureShortLinks() {
+  if (readConfig().shortLinks === false || !existsSync(SHORT_LINKS_SCRIPT)) return null
+  const running = shortLinksState()
+  if (running) return running
+  rmSync(SHORT_LINKS_STATE, { force: true })
+  const out = openSync(SHORT_LINKS_LOG, 'a')
+  const child = spawn(process.execPath, [SHORT_LINKS_SCRIPT, '--host', 'auto'], { detached: true, stdio: ['ignore', out, out] })
+  child.unref()
+  for (let i = 0; i < 20; i++) {
+    const state = shortLinksState()
+    if (state) return state
+    await new Promise(r => setTimeout(r, 150))
+  }
+  return null
+}
+function stopShortLinks() {
+  const state = shortLinksState()
+  if (state) { try { process.kill(state.pid) } catch {} }
+  rmSync(SHORT_LINKS_STATE, { force: true })
+  return Boolean(state)
+}
+
 const cmd = process.argv[2]
 if (cmd === 'status') {
   const up = await isUp()
-  console.log(JSON.stringify({ running: up, port: PORT, url: URL, pid: pid() }))
+  console.log(JSON.stringify({ running: up, port: PORT, url: URL, pid: pid(), shortLinks: shortLinksState()?.base ?? null }))
   process.exit(up ? 0 : 1)
 } else if (cmd === 'preflight') {
   // Load-time dependency check. Reports status; does NOT start the daemon unless the
@@ -86,19 +123,26 @@ if (cmd === 'status') {
   bootstrap()
   start()
   const ok = await waitUp()
-  console.log(JSON.stringify({ running: ok, port: PORT, url: URL, pid: pid(), autostart: true, note: ok ? 'autostarted' : 'failed to start (see ' + LOG + ')' }))
+  const shortLinks = ok ? (await ensureShortLinks())?.base ?? null : null
+  console.log(JSON.stringify({ running: ok, port: PORT, url: URL, pid: pid(), shortLinks, autostart: true, note: ok ? 'autostarted' : 'failed to start (see ' + LOG + ')' }))
   process.exit(0)
 } else if (cmd === 'up' || cmd === 'ensure') {
-  if (await isUp()) { console.log(JSON.stringify({ running: true, port: PORT, url: URL, note: 'already up' })); process.exit(0) }
+  if (await isUp()) {
+    const shortLinks = (await ensureShortLinks())?.base ?? null
+    console.log(JSON.stringify({ running: true, port: PORT, url: URL, shortLinks, note: 'already up' }))
+    process.exit(0)
+  }
   bootstrap()
   start()
   const ok = await waitUp()
-  console.log(JSON.stringify({ running: ok, port: PORT, url: URL, pid: pid(), note: ok ? 'started' : 'failed to start (see ' + LOG + ')' }))
+  const shortLinks = ok ? (await ensureShortLinks())?.base ?? null : null
+  console.log(JSON.stringify({ running: ok, port: PORT, url: URL, pid: pid(), shortLinks, note: ok ? 'started' : 'failed to start (see ' + LOG + ')' }))
   process.exit(ok ? 0 : 1)
 } else if (cmd === 'down') {
   const p = pid()
   if (p) { try { process.kill(-p) } catch { try { process.kill(p) } catch {} } rmSync(PIDFILE, { force: true }) }
-  console.log(JSON.stringify({ running: false, stopped: !!p }))
+  const shortLinksStopped = stopShortLinks()
+  console.log(JSON.stringify({ running: false, stopped: !!p, shortLinksStopped }))
 } else {
   console.error('usage: page-server.mjs <preflight|status|ensure|up|down>')
   process.exit(2)

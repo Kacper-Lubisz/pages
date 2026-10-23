@@ -3,7 +3,7 @@
    in any project with zero external deps. In a real project you swap these for your OWN components
    once the per-project coupling config is set (the `@` alias + Tailwind content globs) — that's the
    actual feature this page demonstrates. A clean reference, not a flow. */
-import { Page, Section, P, Mockup, PrStatus, LinearTicket } from '@page'
+import { Page, Section, P, Mockup, PrStatus, LinearTicket, QrCode, TunnelControl } from '@page'
 
 export const meta = { title: 'Component library', owner: 'kacper', created: '2026-06-19', status: 'reference' }
 
@@ -161,6 +161,22 @@ export default function Components() {
         <Mockup bar="import { PrStatus } from '@page'">
           <Row label="open"><PrStatus pr={3721} /></Row>
           <Row label="merged"><PrStatus pr={3722} /></Row>
+        </Mockup>
+      </Section>
+
+      <Section title="TunnelControl — HTTPS tunnel for phone links">
+        <P>
+          <code>{'<TunnelControl project="nous" />'}</code> (or <code>{'ports={[3000, 4000]}'}</code> on a page
+          without a project; the first port is the app) puts the dev ports and the QR short links behind one
+          free Cloudflare quick tunnel and a local proxy, so a phone gets HTTPS (needed for the camera) with
+          nothing restarted. While it runs, every <code>QrCode</code>, <code>QrLinks</code> and{' '}
+          <code>{'Checklist qr'}</code> link on a routed local port encodes its tunnel address and shows "via
+          HTTPS tunnel". This one is live: it controls the daemon's real tunnel (here, just the short-link
+          server, under <code>/__qr</code>).
+        </P>
+        <Mockup bar="import { TunnelControl } from '@page'">
+          <TunnelControl ports={[]} />
+          <div className="max-w-[220px]"><QrCode url="http://localhost:4327/health" label="Short-link health" size={120} /></div>
         </Mockup>
       </Section>
     </Page>

@@ -107,6 +107,23 @@ source components** (`~/…` / `@/…`) or show a live `<PrStatus>`, bind it to 
 3. A Vite plugin resolves those aliases **per importing page** (keyed off the subdir), so one daemon
    serves pages bound to many different projects. Adding a new project = one registry entry + restart.
 
+4. **A project with its own Tailwind theme** (a design system such as Nous' Glow) adds a `scope`
+   to its entry, with paths relative to `root`:
+   ```json
+   "scope": { "tailwindPreset": "packages/glow/tailwind-preset.js",
+              "content": ["packages/glow/src/**/*.{ts,tsx}"],
+              "css": ["packages/glow/fonts.css"] }
+   ```
+   The daemon compiles a **separate** Tailwind build of that preset (preflight off, every utility
+   prefixed with `.page-scope-<project>`) to `.app/src/generated/<project>.scope.css`. It runs
+   outside the page PostCSS pipeline, so it never changes the default page styles, and it recompiles
+   when the scope's sources or the store's `<project>/` folder change. Wrap the real components in
+   `<ProjectScope project="<project>">` from `@page`. Inside the scope the project's tokens work in
+   your own classes too. Breakpoints still follow the browser window, so a phone mock-up on a wide
+   page may need the component's mobile variant forced (e.g. `className="md:flex"`). react and
+   react-dom are always deduped to the daemon's copies, so components from another repo share one
+   React. A page's own component folder (`<project>/<slug>-assets/*.tsx`) is in the Tailwind scan.
+
 **To improve the skill, edit the files under `~/.claude/skills/pages/` (the `claude-skills` repo) —
 NOT the store's `~/projects/notes/pages/.app` copy, which is overwritten on the next daemon
 (re)start.** After editing, run `node ~/.claude/skills/pages/bootstrap.mjs` to refresh the store (the
@@ -216,6 +233,94 @@ Import what you use: `import { Page, Section, P, ... } from '@page'`. (Legacy al
   file-backed decision board**; state persists via `/api/state/<slug>`. **Set `slug` to the page's
   own slug.** See `/t/review`. (Read-only in shared static snapshots.)
 
+- **`<Checklist slug id title items shortLinkBase>`** — a manual test pass. Each item
+  (`{ id, text, detail?, qr? }`) gets pass ✓ / fail ✕ buttons and an optional note ("what did you
+  see?"); the header counts passed and failed. State persists per checklist at
+  `/api/state/<slug>__checklist-<id>`, so several checklists on one page never overwrite each other.
+  Put the step's tools in `detail` (a `<CopyCommand>`, an `<HttpAction>`, a `<QrCode>`) so the
+  checklist *is* the procedure. An item with `qr: { source, label }` shows the newest link with that
+  label from `<slug>__<source>.state.json` as a QR code and **ticks itself** when the link is opened
+  through the short-link server (`shortLinkBase`, see below).
+- **`<HttpAction label url method body description active>`** in an **`<ActionGrid>`** — a button
+  that calls a local dev HTTP endpoint (e.g. the sandbox dashboard's `/overrides` to flip a gate or
+  pick a fake's outcome) and shows the response. It only sends the request written in the page; it
+  never runs shell commands.
+- **`<RemoteSetting title description readUrl read writeUrl options valueLabels>`** — a setting that
+  lives in a local dev service (a feature-flag override, a fake's outcome): shows the live value
+  ("Now: On"), polled from `readUrl` and picked out by `read(json)`, plus one button per option (the
+  active one is ticked). Use `description` to say exactly what changes and where (e.g. "a local
+  override of gate X for this worktree only; Statsig itself is untouched"). Prefer it to a bare
+  `<HttpAction>` whenever there is a current value to show.
+- **`<LinkAction label url method body slug id group links>`** — a button that calls a local dev
+  endpoint (e.g. an app's sandbox "seed" action) and adds the links it returns (`links(json)`) to
+  the link file `<slug>__<id>.state.json`, so they show up as QR codes in `<QrLinks>` / `<Checklist
+  qr>` and resolve through the short-link server. Prefer this to a seed `<CopyCommand>` whenever the
+  app has (or can get) an HTTP seed endpoint.
+- **`<RemoteState title description readUrl rows empty>`** — live state from a local endpoint as
+  label/value rows (`rows(json)`), e.g. "the test household now has licence number X". A
+  `<Checklist>` item with `watch: { url, when }` ticks itself once `when(json)` is true.
+- **`<CopyCommand label command>`** — a terminal command with a Copy button, for setup steps a page
+  can't (and shouldn't) run itself, such as seeding data with a CLI.
+- **`<ServiceStatus label url command detail>`** in a **`<ServiceGrid>`** — a local dev server's live
+  status (polled no-cors GET: running / not running), with its start `command` shown when it's down
+  and a "Show restart command" when it's up. A `<Checklist>` item with `probe: <url>` ticks itself
+  while that URL answers.
+- **`<QrCode url label detail>`** — a scannable QR code for opening a URL on a phone, with
+  "Open here" and Copy. Use a URL the phone can reach (a LAN IP, not `localhost`).
+- **`<QrLinks slug id empty>`** — live QR codes for links a script produces while you test (magic
+  login links from a seed script, a tunnel URL). The script writes
+  `{ "entries": [{ "group", "label", "url", "detail"?, "createdAt" }] }` to
+  `notes/pages/<slug>__<id>.state.json`; the component polls it, shows the newest group as QR codes
+  and older groups as a list. Pair it with the `<CopyCommand>` that runs the script.
+- **Short links for phones (built in)** — `page-server.mjs up`/`ensure` also starts
+  `qr-short-links.mjs` on the Mac's LAN address (`http://<lan-ip>:4327/<code>` → 302 to a URL listed
+  in a link file, recording `scannedAt`/`scanCount` on that entry); `down` stops it; `status`
+  reports it. The daemon publishes its address at `GET /api/short-links`, so `<QrLinks>` and
+  `<Checklist qr>` pick it up automatically: codes encode the short URL and opened links show
+  "Opened on phone" and tick their item (pass `shortLinkBase` only to override). Show its status with
+  **`<ShortLinksStatus />`**. Opt out with `"shortLinks": false` in `.config/pages.config.json`. It
+  only redirects to URLs already in a link file and runs no commands; it is a separate process
+  because the Vite daemon (whose `fs.allow` spans the repo) must never be exposed beyond localhost.
+
+## HTTPS tunnel for phone links
+
+Phone browsers only open the camera (and some other APIs) on HTTPS pages, and a LAN dev stack is
+plain http. **`<TunnelControl project="…" />`** is one button, "Use HTTPS tunnel for phone links",
+that puts the project's dev ports behind **one** free Cloudflare quick tunnel (no account), with
+nothing in the project changed or restarted:
+
+- the daemon starts `.page-assets/tunnel-proxy.mjs` on a local port and one `cloudflared tunnel
+  --url http://127.0.0.1:<proxy> --no-autoupdate` to it. The proxy serves the first port (the app)
+  at the tunnel root, every other configured port at `/__svc/<port>/…` and the QR short-link
+  server at `/__qr/…`, and proxies WebSockets (Vite HMR);
+- upstreams see `Host: localhost:<port>` and the app's own LAN origin as `Origin` (added to
+  `/__svc` calls that lack one, as the app's cross-origin calls always had it), so host and CORS
+  checks pass. Redirects to a routed local address are rewritten onto the tunnel, `Set-Cookie`
+  loses `Domain=`, and the app's HTML gets a script, first in `<head>`, that rewrites absolute
+  `http(s)://<localhost or LAN IP>:<routed port>` URLs in `fetch`, XHR, `WebSocket`, `EventSource`,
+  `sendBeacon` and iframe/img/script `src` to `/__svc/<port>` on the tunnel. So an app with its API address built in
+  (`http://192.168.0.85:3116`) works over HTTPS as it runs today;
+- every `<QrCode>`, `<QrLinks>`, `<Checklist qr>` and `<LinkAction>` link on a routed local port
+  encodes its tunnel address, tagged "via HTTPS tunnel". `/api/short-links` reports
+  `<tunnel>/__qr`, so codes stay short and scans still tick checklists (the short-link redirect
+  lands on the tunnel too). "Stop tunnel" kills both processes and everything reverts.
+
+Configure per project in `.config/projects.json` (pages without a project pass `ports`):
+
+```json
+"nous": { "root": "…", "tunnel": { "ports": [3016, 3116, 9099, 4100], "lanHost": "auto" } }
+```
+
+`lanHost` is the LAN address whose URLs are routed (`auto` = this Mac's addresses). The daemon backs
+it with `GET /api/tunnels[?project=]`, `POST /api/tunnels/start` (`{ ports?, project? }`) and `POST
+/api/tunnels/stop` (`app/tunnel-api.mjs`). The URL is only shown once it resolves on public DNS (an
+earlier lookup gets negative-cached by the router, phone included); no URL within 30 s is reported as
+an error. State lives in `.page-assets/.tunnels.json`, the processes die with the daemon, and a
+restarted daemon kills any it left behind. Only the configured ports are routed; the daemon's own
+port never is. **Cost and safety:** quick tunnels are free, but the URL is random, changes on every
+start, has no uptime guarantee, and anyone who has it reaches those dev servers while it runs.
+Testing only; stop it when you're done.
+
 ## Pick the primitive for the shape of the content
 
 | Content shape                                  | Right primitive                                         |
@@ -233,6 +338,7 @@ Import what you use: `import { Page, Section, P, ... } from '@page'`. (Legacy al
 | chronological events / RCA                     | `<Timeline>`                                            |
 | a stepped flow through screens over time       | `<FlowTimeline>`                                        |
 | triaging a list of findings into go/no-go      | `<ReviewStream>`                                        |
+| a test plan someone works through by hand      | `<Checklist>` per area, `<ActionGrid>`/`<HttpAction>` + `<CopyCommand>` for setup |
 | a Linear ticket — filed or a paste-ready draft | `<LinearTicket>` (real statuses/links via Linear MCP)   |
 | finished work + demo (PR summary)              | `<Stats>` for the win, `<BeforeAfter>`/`<FlowTimeline>` for the demo, `<Tasks done>` for scope |
 

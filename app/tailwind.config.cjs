@@ -27,6 +27,8 @@ module.exports = {
     // page-adjacent component subdirs (e.g. notes/pages/<feature>-ideas/*.tsx, and project
     // subdirs' pages) — without this their Tailwind classes never generate
     resolve(here, '../*/*.{ts,tsx}'),
+    // a project-bound page's own component folder (notes/pages/<project>/<slug>-assets/*.tsx)
+    resolve(here, '../*/*-assets/*.{ts,tsx}'),
     // union of registered projects' component sources (real components bound pages import)
     ...projectContent,
   ],

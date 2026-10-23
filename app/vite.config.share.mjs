@@ -21,6 +21,7 @@ export default defineConfig({
   logLevel: 'warn',
   define: { __PAGE_STATIC__: 'true' },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@page': resolve(here, 'src/lib/page-ui.tsx'),
       '@plan': resolve(here, 'src/lib/page-ui.tsx'), // legacy import specifier
