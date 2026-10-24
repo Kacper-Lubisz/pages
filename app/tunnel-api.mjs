@@ -140,7 +140,7 @@ export function tunnelApi({ plansDir, daemonPort }) {
     if (shortLinks) routes[shortLinks.port] = '/__qr'
     const services = [
       ...ports.map(port => ({ port, label: port === primaryPort ? 'app' : null, localUrl: `http://localhost:${port}`, path: routes[port] })),
-      ...(shortLinks ? [{ port: shortLinks.port, label: 'QR short links', localUrl: shortLinks.base, path: '/__qr' }] : []),
+      ...(shortLinks ? [{ port: shortLinks.port, label: 'QR short links', localUrl: `http://127.0.0.1:${shortLinks.port}`, path: '/__qr' }] : []),
     ]
     const state = {
       ...STOPPED,

@@ -35,7 +35,7 @@ function upstreamFor(url) {
   const qr = url.match(QR_PATH)
   if (qr) {
     if (!config.shortLinks) return null
-    return { host: config.shortLinks.host, port: config.shortLinks.port, path: pathFrom(qr[1]), prefix: '/__qr', primary: false }
+    return { host: '127.0.0.1', port: config.shortLinks.port, path: pathFrom(qr[1]), prefix: '/__qr', primary: false }
   }
   if (!config.primaryPort) return null
   return { host: '127.0.0.1', port: config.primaryPort, path: url, prefix: '', primary: true }

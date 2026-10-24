@@ -16,7 +16,8 @@
 // ({ "entries": [{ "url", … }] }), so this is not an open redirect. Opening a link sets
 // "scannedAt" and bumps "scanCount" on that entry, which pages poll to tick checklist items.
 //
-// Bind it to your Wi-Fi address so a phone can reach it. It never exposes the Vite daemon, whose
+// It listens on every interface so it survives a Wi-Fi address change, and advertises the LAN address
+// (127.0.0.1 off Wi-Fi, where only the tunnel reaches it). It never exposes the Vite daemon, whose
 // fs.allow spans the whole repo, and it runs no commands.
 import http from 'node:http'
 import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -47,12 +48,8 @@ const arg = (name, fallback) => {
   return i === -1 ? fallback : process.argv[i + 1]
 }
 const requestedHost = arg('host', 'auto')
-const host = requestedHost === 'auto' ? lanAddress() : requestedHost
+const host = requestedHost === 'auto' ? (lanAddress() ?? '127.0.0.1') : requestedHost
 const port = Number(arg('port', '4327'))
-if (!host) {
-  console.error('qr-short-links: no LAN address found (is Wi-Fi on?). Pass --host <lan-ip>.')
-  process.exit(1)
-}
 
 export function shortCode(url) {
   let hash = 0x811c9dc5
@@ -104,7 +101,7 @@ const server = http.createServer((req, res) => {
   res.writeHead(302, { location: url, 'cache-control': 'no-store' }).end()
 })
 
-server.listen(port, host, () => {
+server.listen(port, '0.0.0.0', () => {
   const base = `http://${host}:${port}`
   writeFileSync(STATE_FILE, JSON.stringify({ base, host, port, pid: process.pid, startedAt: new Date().toISOString() }))
   console.log(`qr-short-links on ${base}`)
