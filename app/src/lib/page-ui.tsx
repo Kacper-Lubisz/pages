@@ -2503,7 +2503,7 @@ export type TunnelService = { port: number; label: string | null; localUrl: stri
 export type TunnelState = {
   running: boolean
   startedAt: string | null
-  status: 'starting' | 'live' | 'error' | null
+  status: 'starting' | 'live' | 'unreachable' | 'error' | null
   publicUrl: string | null
   error: string | null
   localHosts: string[]
@@ -2606,9 +2606,11 @@ export function TunnelControl({ project, ports }: { project?: string; ports?: nu
     }
   }
   const { running, status, publicUrl } = tunnel
-  const summary = !running ? 'Off' : status === 'live' ? 'Live' : status === 'error' ? 'Failed' : 'Starting…'
-  const summaryTone = !running ? 'bg-slate-100 text-slate-600' : status === 'live' ? 'bg-green-600/10 text-green-700' : status === 'error' ? 'bg-red-600/10 text-red-700' : 'bg-amber-500/10 text-amber-700'
-  const dot = status === 'live' ? 'bg-green-600' : status === 'error' ? 'bg-red-600' : 'bg-amber-400 animate-pulse'
+  const isBroken = status === 'error' || status === 'unreachable'
+  const summary = !running ? 'Off' : status === 'live' ? 'Live' : status === 'unreachable' ? 'Not answering' : status === 'error' ? 'Failed' : 'Starting…'
+  const summaryTone = !running ? 'bg-slate-100 text-slate-600' : status === 'live' ? 'bg-green-600/10 text-green-700' : isBroken ? 'bg-red-600/10 text-red-700' : 'bg-amber-500/10 text-amber-700'
+  const dot = status === 'live' ? 'bg-green-600' : isBroken ? 'bg-red-600' : 'bg-amber-400 animate-pulse'
+  const action = !running || status === 'unreachable' ? 'start' : 'stop'
   return (
     <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4" data-tunnel-control={running ? 'running' : 'stopped'} data-tunnel-status={status ?? 'off'}>
       <div className="flex flex-wrap items-center gap-3">
@@ -2616,11 +2618,11 @@ export function TunnelControl({ project, ports }: { project?: string; ports?: nu
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${summaryTone}`}>{summary}</span>
         <button
           type="button"
-          onClick={() => call(running ? 'stop' : 'start')}
+          onClick={() => call(action)}
           disabled={busy !== null}
-          className={`ml-auto rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-60 ${running ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100' : 'bg-slate-900 text-white hover:bg-slate-700'}`}
+          className={`ml-auto rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-60 ${action === 'stop' ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100' : 'bg-slate-900 text-white hover:bg-slate-700'}`}
         >
-          {busy === 'starting' ? 'Starting…' : busy === 'stopping' ? 'Stopping…' : running ? 'Stop tunnel' : 'Use HTTPS tunnel for phone links'}
+          {busy === 'starting' ? 'Starting…' : busy === 'stopping' ? 'Stopping…' : status === 'unreachable' ? 'Restart tunnel' : running ? 'Stop tunnel' : 'Use HTTPS tunnel for phone links'}
         </button>
       </div>
       {!running && (
