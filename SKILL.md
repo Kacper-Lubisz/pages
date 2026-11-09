@@ -22,7 +22,7 @@ publish** it via the Share pipeline (see the `pr-workflow` skill). Don't publish
 
 Page server: !`node "$HOME/projects/notes/pages/.page-assets/page-server.mjs" preflight`
 
-The line above is **dynamic-context injection** — the `` !`…` `` command runs automatically when this
+The line above is **dynamic-context injection** — its command runs automatically when this
 skill loads. It runs `preflight`, which **checks** the daemon and prints status JSON but does **not**
 start anything by default — autostart is opt-in (see below), so a skill load never silently binds a
 port. Read the JSON:
@@ -214,6 +214,12 @@ Import what you use: `import { Page, Section, P, ... } from '@page'`. (Legacy al
 - **`<BeforeAfter before after>`** — temporal compare (today vs proposed / before vs shipped).
 - **`<Diagram caption>{<svg>…</svg>}</Diagram>`** — the workhorse. Write raw `<svg>` inside for
   sequence diagrams, banded swimlanes, fan-out, state machines. Caption the **insight**.
+- **`<ErDiagram entities relations caption>`** + **`<KeyTree items>`** — **database tables** drawn as
+  cards (coloured header, a row per column with PK/FK/UQ badges and the type, `removed` columns struck
+  through) joined by crow's-foot lines (`card: '1:1' | '1:0..1' | '1:n'`) that land on the named
+  columns. You place each table (`x`, `y`, `w`); sizes and routing are automatic. `<KeyTree>` draws a
+  path hierarchy with notes (S3 key layouts, folders). Use these instead of listing columns as text.
+  See `/t/components`.
 - **`<DecisionTable head rows>`** — N×M matrix, **short cells only**. **`<KvTable rows>`** —
   from→to mapping (renames, schema moves, env audits); keep `from`/`to` to short identifiers
   (they're mono) — long prose goes in the wrapping `note` column. Both scroll horizontally within
@@ -229,6 +235,19 @@ Import what you use: `import { Page, Section, P, ... } from '@page'`. (Legacy al
   with a cursor that animates to each tap, a scrubbable rail of colour-coded events, and a synced
   log. `renderScreen(state)` returns live React screens (`mode="concept"`) or `<img>` screenshots
   (`mode="replay"`). See `/t/e2e-flow`. This is the go-to **demo** block for a work-summary page.
+- **`<ScreenFlow spec>`** (gallery module, not `@page`: copy `templates/screen-flow.tsx` next to the
+  page) — a **before/after flow chart** of a changed multi-screen flow. You list every screen once
+  (`boxes`, each with a `before` and/or `after` side: grid position, title, when it's shown, what it
+  shows, every exit), the `cases` that walk it (`paths.before` / `paths.after`, with
+  `notAsked(id, why)` for a step that's on the path but skipped), and optionally a
+  `screen(box, version, case)` renderer and per-case `recordings` (`{ video, marks: [{ box, note,
+  tMs }] }`). Picking a case lights its path on both charts with the visit order; clicking a box
+  shows both versions side by side with their ways out; a recording moves the chart as it plays,
+  with Next/←/→ stepping mark to mark. **A path move with no declared exit is listed in red**, so
+  writing the cases finds the transitions the chart (or the code) is missing. See `/t/screen-flow`.
+  The full-size worked example (32 screens, 29 cases, 169 screenshots, 30 synced recordings, and the
+  Playwright capture script that produces them) is the local `licence-scan-testing` page in the
+  store (`licence-scan-testing-assets/screenFlow.tsx` and `capture/capture-flow.mjs`).
 - **`<ReviewStream slug messages>`** + **`usePageState(slug, initial)`** — an **interactive,
   file-backed decision board**; state persists via `/api/state/<slug>`. **Set `slug` to the page's
   own slug.** See `/t/review`. (Read-only in shared static snapshots.)
@@ -331,12 +350,14 @@ Testing only; stop it when you're done.
 | State machine / status flow                    | `<svg>` nodes + labelled edges                          |
 | N×M matrix, short cells                        | `<DecisionTable>`                                       |
 | from→to mapping (renames, moves)               | `<KvTable>`                                             |
+| database tables, keys and relations            | `<ErDiagram>` (+ `<KeyTree>` for storage layout)        |
 | List of items each with a paragraph + tags     | `<Cards>` (but vary — don't stack 3+ in a row)          |
 | 2–3 symmetric options with pros/cons           | `<Choices>` (`cols={3}` for 3-up)                       |
 | Several UI mockups / screens side by side      | `<Gallery>`; real components in `<Mockup>`              |
 | metrics / a measured win                       | `<Stats>` + `<Stat>`                                    |
 | chronological events / RCA                     | `<Timeline>`                                            |
 | a stepped flow through screens over time       | `<FlowTimeline>`                                        |
+| a changed flow: every screen, before vs after, per case | `<ScreenFlow>` (`/t/screen-flow`)              |
 | triaging a list of findings into go/no-go      | `<ReviewStream>`                                        |
 | a test plan someone works through by hand      | `<Checklist>` per area, `<ActionGrid>`/`<HttpAction>` + `<CopyCommand>` for setup |
 | a Linear ticket — filed or a paste-ready draft | `<LinearTicket>` (real statuses/links via Linear MCP)   |

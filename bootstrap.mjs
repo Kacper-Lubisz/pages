@@ -50,8 +50,9 @@ sync(join(skill, 'page-assets'), join(plans, '.page-assets'), f => f.endsWith('.
 // Gallery ships template pages (*.page.tsx) plus the support modules some templates import as
 // siblings (e.g. the triage board `triage-board.tsx` + its `triage-hotkeys.mjs` keyboard logic).
 // Carry those .tsx/.mjs too so a fresh project can resolve `./triage-board`; skip *.test.mjs.
+// A template's media (e.g. screen-flow's demo videos) lives in a sibling `<name>-assets/` folder.
 const gallery = sync(join(skill, 'gallery'), join(plans, 'templates'), f =>
-  f.endsWith('.tsx') || (f.endsWith('.mjs') && !f.endsWith('.test.mjs')),
+  f.endsWith('.tsx') || f.endsWith('-assets') || (f.endsWith('.mjs') && !f.endsWith('.test.mjs')),
 )
 
 // The gallery templates, project-bound pages, and sibling component folders live OUTSIDE the Vite

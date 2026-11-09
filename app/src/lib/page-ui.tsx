@@ -1073,6 +1073,148 @@ export function KvTable({ rows }: { rows: { from: ReactNode; to?: ReactNode; not
   )
 }
 
+/* ---- entity diagram (database tables) ---------------------------------
+   Tables as cards: a coloured header, one row per column with PK/FK/UQ badges
+   and the type right-aligned, joined by crow's-foot relationship lines that land
+   on the named columns. You place each table (x, y, w in SVG units); heights,
+   the viewBox and the line routing are worked out for you. `removed` columns
+   render struck through, for a planned drop. Pair with <KeyTree> for storage
+   layouts (S3 prefixes, folders) that sit beside the tables. */
+export type ErKey = 'PK' | 'FK' | 'UQ' | 'PK FK' | 'UQ FK'
+export type ErColumn = { name: string; type?: string; key?: ErKey; removed?: boolean }
+export type ErEntity = { id: string; title: string; tag?: string; color?: string; x: number; y: number; w?: number; columns: ErColumn[] }
+// The `to` end carries the cardinality: one, zero-or-one, or many.
+export type ErRelation = { from: string; to: string; fromColumn?: string; toColumn?: string; card: '1:1' | '1:0..1' | '1:n'; label?: string }
+
+const ER_HEAD = 34
+const ER_ROW = 19
+const ER_KEY_FILL: Record<ErKey, string> = { PK: '#f59e0b', FK: '#3b82f6', UQ: '#8b5cf6', 'PK FK': '#f59e0b', 'UQ FK': '#3b82f6' }
+const erHeight = (e: ErEntity) => ER_HEAD + 12 + e.columns.length * ER_ROW + 6
+const erRowY = (e: ErEntity, column?: string) => {
+  const i = column ? e.columns.findIndex((c) => c.name === column) : -1
+  return i < 0 ? e.y + ER_HEAD / 2 : e.y + ER_HEAD + 12 + i * ER_ROW + ER_ROW / 2 - 4
+}
+
+function ErTable({ e }: { e: ErEntity }) {
+  const w = e.w ?? 280
+  const h = erHeight(e)
+  const color = e.color ?? '#0f766e'
+  return (
+    <g>
+      <rect x={e.x + 3} y={e.y + 4} width={w} height={h} rx={10} fill="#0f172a" opacity={0.06} />
+      <rect x={e.x} y={e.y} width={w} height={h} rx={10} fill="#fff" stroke="#cbd5e1" />
+      <path d={`M${e.x},${e.y + 10} a10,10 0 0 1 10,-10 h${w - 20} a10,10 0 0 1 10,10 v${ER_HEAD - 10} h-${w} z`} fill={color} />
+      <text x={e.x + 12} y={e.y + 22} fontSize={13} fontWeight={600} fill="#fff" fontFamily="ui-sans-serif, system-ui">{e.title}</text>
+      {e.tag && <text x={e.x + w - 10} y={e.y + 22} fontSize={10} textAnchor="end" fill="#ffffffcc" fontFamily="ui-sans-serif, system-ui">{e.tag}</text>}
+      {e.columns.map((c, i) => {
+        const cy = e.y + ER_HEAD + 12 + i * ER_ROW + ER_ROW / 2
+        const wide = (c.key?.length ?? 0) > 2
+        return (
+          <g key={`${c.name}-${i}`}>
+            {i % 2 === 1 && <rect x={e.x + 1} y={cy - ER_ROW / 2 - 4} width={w - 2} height={ER_ROW} fill="#f8fafc" />}
+            {c.key && (
+              <g>
+                <rect x={e.x + 8} y={cy - 13} width={wide ? 34 : 20} height={13} rx={3} fill={ER_KEY_FILL[c.key]} />
+                <text x={e.x + 8 + (wide ? 17 : 10)} y={cy - 3.5} fontSize={8.5} fontWeight={700} textAnchor="middle" fill="#fff" fontFamily="ui-sans-serif, system-ui">{c.key}</text>
+              </g>
+            )}
+            <text x={e.x + 48} y={cy - 3} fontSize={11.5} fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fill={c.removed ? '#94a3b8' : '#0f172a'} textDecoration={c.removed ? 'line-through' : undefined}>{c.name}</text>
+            {c.type && <text x={e.x + w - 10} y={cy - 3} fontSize={10.5} textAnchor="end" fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#64748b">{c.type}</text>}
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+function ErLine({ r, byId }: { r: ErRelation; byId: Map<string, ErEntity> }) {
+  const a = byId.get(r.from)
+  const b = byId.get(r.to)
+  if (!a || !b) return null
+  const aw = a.w ?? 280
+  const bw = b.w ?? 280
+  const rightward = b.x >= a.x + aw / 2
+  const x1 = rightward ? a.x + aw : a.x
+  const x2 = rightward ? b.x : b.x + bw
+  const y1 = erRowY(a, r.fromColumn)
+  const y2 = erRowY(b, r.toColumn)
+  const d1 = rightward ? 1 : -1 // direction leaving `a`
+  const d2 = -d1 // direction leaving `b`
+  const bend = Math.max(30, Math.abs(x2 - x1) / 2)
+  return (
+    <g stroke="#475569" strokeWidth={1.5} fill="none">
+      <path d={`M${x1},${y1} C${x1 + d1 * bend},${y1} ${x2 + d2 * bend},${y2} ${x2},${y2}`} />
+      <path d={`M${x1 + d1 * 8},${y1 - 7} L${x1 + d1 * 8},${y1 + 7}`} />
+      {r.card === '1:n' && <path d={`M${x2 + d2 * 12},${y2} L${x2},${y2 - 7} M${x2 + d2 * 12},${y2} L${x2},${y2 + 7} M${x2 + d2 * 16},${y2 - 7} L${x2 + d2 * 16},${y2 + 7}`} />}
+      {r.card === '1:1' && <path d={`M${x2 + d2 * 8},${y2 - 7} L${x2 + d2 * 8},${y2 + 7} M${x2 + d2 * 13},${y2 - 7} L${x2 + d2 * 13},${y2 + 7}`} />}
+      {r.card === '1:0..1' && (
+        <>
+          <path d={`M${x2 + d2 * 8},${y2 - 7} L${x2 + d2 * 8},${y2 + 7}`} />
+          <circle cx={x2 + d2 * 17} cy={y2} r={4.5} fill="#fff" />
+        </>
+      )}
+    </g>
+  )
+}
+
+// Drawn after the tables, with a white halo, so a label in a narrow gap stays readable.
+function ErLabel({ r, byId }: { r: ErRelation; byId: Map<string, ErEntity> }) {
+  const a = byId.get(r.from)
+  const b = byId.get(r.to)
+  if (!a || !b || !r.label) return null
+  const aw = a.w ?? 280
+  const bw = b.w ?? 280
+  const rightward = b.x >= a.x + aw / 2
+  const x1 = rightward ? a.x + aw : a.x
+  const x2 = rightward ? b.x : b.x + bw
+  const y = Math.min(erRowY(a, r.fromColumn), erRowY(b, r.toColumn)) - 9
+  return (
+    <text x={(x1 + x2) / 2} y={y} fontSize={10.5} textAnchor="middle" fill="#334155" stroke="#fff" strokeWidth={4} paintOrder="stroke" strokeLinejoin="round" fontFamily="ui-sans-serif, system-ui">{r.label}</text>
+  )
+}
+
+export function ErDiagram({ entities, relations = [], caption }: { entities: ErEntity[]; relations?: ErRelation[]; caption?: ReactNode }) {
+  const byId = new Map(entities.map((e) => [e.id, e]))
+  const width = Math.max(...entities.map((e) => e.x + (e.w ?? 280))) + 12
+  const height = Math.max(...entities.map((e) => e.y + erHeight(e))) + 12
+  return (
+    <Diagram caption={caption}>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%">
+        {relations.map((r, i) => <ErLine key={i} r={r} byId={byId} />)}
+        {entities.map((e) => <ErTable key={e.id} e={e} />)}
+        {relations.map((r, i) => <ErLabel key={i} r={r} byId={byId} />)}
+      </svg>
+    </Diagram>
+  )
+}
+
+/* ---- key tree (storage layout) ----------------------------------------
+   A path hierarchy with a note per line: S3 key layouts, folder structures,
+   URL trees. `depth` indents with tree connectors; notes line up in a column. */
+export function KeyTree({ title, subtitle, items }: { title?: ReactNode; subtitle?: ReactNode; items: { path: string; depth: number; note?: ReactNode }[] }) {
+  return (
+    <div className="mb-4 rounded-lg border border-orange-300 bg-orange-50/60 px-5 py-4">
+      {(title || subtitle) && (
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-3 text-[13px]">
+          {title && <span className="font-semibold text-slate-900">{title}</span>}
+          {subtitle && <span className="text-orange-800">{subtitle}</span>}
+        </div>
+      )}
+      <div className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-8 gap-y-0.5 text-[12.5px]">
+        {items.map((it, i) => (
+          <div key={i} className="contents">
+            <div className="whitespace-nowrap font-mono text-orange-900" style={{ paddingLeft: it.depth * 22 }}>
+              {it.depth > 0 && <span className="mr-1.5 text-orange-300">└─</span>}
+              {it.path}
+            </div>
+            <div className="text-slate-500">{it.note}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* ---- stats (report metric tiles) ------------------------------------- */
 export function Stats({ children }: { children: ReactNode }) {
   return <div className="mb-[18px] grid grid-cols-2 gap-3 sm:grid-cols-3">{children}</div>
@@ -2503,7 +2645,7 @@ export type TunnelService = { port: number; label: string | null; localUrl: stri
 export type TunnelState = {
   running: boolean
   startedAt: string | null
-  status: 'starting' | 'live' | 'error' | null
+  status: 'starting' | 'live' | 'unreachable' | 'error' | null
   publicUrl: string | null
   error: string | null
   localHosts: string[]
@@ -2606,9 +2748,11 @@ export function TunnelControl({ project, ports }: { project?: string; ports?: nu
     }
   }
   const { running, status, publicUrl } = tunnel
-  const summary = !running ? 'Off' : status === 'live' ? 'Live' : status === 'error' ? 'Failed' : 'Starting…'
-  const summaryTone = !running ? 'bg-slate-100 text-slate-600' : status === 'live' ? 'bg-green-600/10 text-green-700' : status === 'error' ? 'bg-red-600/10 text-red-700' : 'bg-amber-500/10 text-amber-700'
-  const dot = status === 'live' ? 'bg-green-600' : status === 'error' ? 'bg-red-600' : 'bg-amber-400 animate-pulse'
+  const isBroken = status === 'error' || status === 'unreachable'
+  const summary = !running ? 'Off' : status === 'live' ? 'Live' : status === 'unreachable' ? 'Not answering' : status === 'error' ? 'Failed' : 'Starting…'
+  const summaryTone = !running ? 'bg-slate-100 text-slate-600' : status === 'live' ? 'bg-green-600/10 text-green-700' : isBroken ? 'bg-red-600/10 text-red-700' : 'bg-amber-500/10 text-amber-700'
+  const dot = status === 'live' ? 'bg-green-600' : isBroken ? 'bg-red-600' : 'bg-amber-400 animate-pulse'
+  const action = !running || status === 'unreachable' ? 'start' : 'stop'
   return (
     <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4" data-tunnel-control={running ? 'running' : 'stopped'} data-tunnel-status={status ?? 'off'}>
       <div className="flex flex-wrap items-center gap-3">
@@ -2616,11 +2760,11 @@ export function TunnelControl({ project, ports }: { project?: string; ports?: nu
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${summaryTone}`}>{summary}</span>
         <button
           type="button"
-          onClick={() => call(running ? 'stop' : 'start')}
+          onClick={() => call(action)}
           disabled={busy !== null}
-          className={`ml-auto rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-60 ${running ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100' : 'bg-slate-900 text-white hover:bg-slate-700'}`}
+          className={`ml-auto rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-60 ${action === 'stop' ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100' : 'bg-slate-900 text-white hover:bg-slate-700'}`}
         >
-          {busy === 'starting' ? 'Starting…' : busy === 'stopping' ? 'Stopping…' : running ? 'Stop tunnel' : 'Use HTTPS tunnel for phone links'}
+          {busy === 'starting' ? 'Starting…' : busy === 'stopping' ? 'Stopping…' : status === 'unreachable' ? 'Restart tunnel' : running ? 'Stop tunnel' : 'Use HTTPS tunnel for phone links'}
         </button>
       </div>
       {!running && (

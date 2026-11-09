@@ -3,7 +3,7 @@
    in any project with zero external deps. In a real project you swap these for your OWN components
    once the per-project coupling config is set (the `@` alias + Tailwind content globs) — that's the
    actual feature this page demonstrates. A clean reference, not a flow. */
-import { Page, Section, P, Mockup, PrStatus, LinearTicket, QrCode, TunnelControl } from '@page'
+import { Page, Section, P, Mockup, PrStatus, LinearTicket, QrCode, TunnelControl, ErDiagram, KeyTree } from '@page'
 
 export const meta = { title: 'Component library', owner: 'kacper', created: '2026-06-19', status: 'reference' }
 
@@ -89,6 +89,36 @@ export default function Components() {
           <Row label="as link"><Button href="#">Link button</Button></Row>
           <Row label="disabled"><Button color="blue" disabled>Disabled</Button></Row>
         </Mockup>
+      </Section>
+
+      <Section title="ErDiagram · KeyTree — database tables and storage layout">
+        <P>Place each table with x/y/w; heights, the viewBox and crow's-foot lines are worked out. Relations land on the named columns.</P>
+        <ErDiagram
+          caption="An order has many lines; each line may point at one product."
+          entities={[
+            { id: 'order', title: 'order', tag: 'Postgres', x: 10, y: 10, w: 260, columns: [
+              { key: 'PK', name: 'id', type: 'uuid' }, { name: 'customerId', type: 'text' }, { name: 'status', type: 'open|paid' }, { name: 'legacyRef', type: 'to drop', removed: true },
+            ] },
+            { id: 'line', title: 'orderLine', tag: 'Postgres', x: 340, y: 10, w: 260, color: '#047857', columns: [
+              { key: 'PK FK', name: 'orderId', type: 'uuid' }, { key: 'PK', name: 'lineNo', type: 'int' }, { key: 'FK', name: 'productId', type: 'text?' }, { name: 'qty', type: 'int' },
+            ] },
+            { id: 'product', title: 'product', tag: 'existing', x: 670, y: 60, w: 220, color: '#64748b', columns: [{ key: 'PK', name: 'id', type: 'text' }, { name: 'name', type: 'text' }] },
+          ]}
+          relations={[
+            { from: 'order', to: 'line', fromColumn: 'id', toColumn: 'orderId', card: '1:n', label: 'has lines' },
+            { from: 'product', to: 'line', fromColumn: 'id', toColumn: 'productId', card: '1:0..1', label: 'sold as' },
+          ]}
+        />
+        <KeyTree
+          title="Object store"
+          subtitle="one prefix per order"
+          items={[
+            { path: 'orders/', depth: 0 },
+            { path: '{env}/', depth: 1, note: 'production · staging' },
+            { path: '{orderId}/', depth: 2, note: 'everything for one order' },
+            { path: 'invoice.pdf', depth: 3, note: 'written once, on payment' },
+          ]}
+        />
       </Section>
 
       <Section title="Badge · Heading · Text">
