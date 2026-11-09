@@ -27,6 +27,13 @@ const PUBLIC_RESOLVERS = ['1.1.1.1', '8.8.8.8']
 const PUBLIC_URL = /https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com/
 const CONNECTED = /Registered tunnel connection/i
 const ERROR_LINE = /\sERR\s/
+// Quick tunnels drop silently (sleep, network change) while cloudflared keeps running, so a live
+// tunnel is re-checked end to end through the proxy's own health path.
+const HEALTH_PATH = '/__tunnel-health'
+const HEALTH_INTERVAL_MS = 15_000
+const HEALTH_TIMEOUT_MS = 8_000
+const MISSES_BEFORE_UNREACHABLE = 2
+const healthTimers = new WeakMap()
 const STOPPED = { running: false, startedAt: null, status: null, publicUrl: null, error: null, project: null, daemonPid: null, localHosts: [], routes: {}, services: [], pids: [] }
 
 // Vite re-evaluates its config (and this module) in-process when the config changes; keeping the
@@ -47,6 +54,7 @@ export function tunnelApi({ plansDir, daemonPort }) {
   }
 
   killOrphanedProcesses(stateFile)
+  if (store.state?.running) watchHealth(store.state)
   if (!store.exitHooked) {
     store.exitHooked = true
     process.on('exit', () => {
@@ -67,6 +75,27 @@ export function tunnelApi({ plansDir, daemonPort }) {
     if (store.state !== state || state.status === 'error') return
     update(state, { status: 'error', error })
     stopChildren()
+  }
+
+  function watchHealth(state) {
+    if (healthTimers.has(state)) return
+    let misses = 0
+    const timer = setInterval(async () => {
+      if (store.state !== state) return clearInterval(timer)
+      if (state.status !== 'live' && state.status !== 'unreachable') return
+      const isAnswering = await checkTunnelAnswers(state.publicUrl)
+      if (store.state !== state) return
+      misses = isAnswering ? 0 : misses + 1
+      if (isAnswering && state.status === 'unreachable') update(state, { status: 'live', error: null })
+      if (misses >= MISSES_BEFORE_UNREACHABLE && state.status === 'live') {
+        update(state, {
+          status: 'unreachable',
+          error: `${state.publicUrl} stopped answering (${misses} checks in a row). Quick tunnels drop after sleep or a network change: restart it.`,
+        })
+      }
+    }, HEALTH_INTERVAL_MS)
+    timer.unref?.()
+    healthTimers.set(state, timer)
   }
 
   function startProxy(state, proxyConfig) {
@@ -130,7 +159,8 @@ export function tunnelApi({ plansDir, daemonPort }) {
   }
 
   function startTunnel({ ports, project }) {
-    if (store.state?.running && store.state.status !== 'error') return
+    if (store.state?.running && store.state.status !== 'error' && store.state.status !== 'unreachable') return
+    if (store.state?.status === 'unreachable') stopChildren()
     const shortLinks = runningShortLinks(shortLinksFile)
     const lanHost = projectTunnelConfig(project)?.lanHost
     const localHosts = localHostsFor(lanHost, shortLinks)
@@ -156,6 +186,7 @@ export function tunnelApi({ plansDir, daemonPort }) {
     }
     store.state = state
     save()
+    watchHealth(state)
     startProxy(state, {
       primaryPort,
       ports,
@@ -225,7 +256,7 @@ function publicState(state) {
     running: state.running,
     startedAt: state.startedAt,
     status: state.status,
-    publicUrl: state.status === 'live' ? state.publicUrl : null,
+    publicUrl: state.status === 'live' || state.status === 'unreachable' ? state.publicUrl : null,
     error: state.error,
     localHosts: state.localHosts,
     routes: state.routes,
@@ -280,6 +311,16 @@ function lanAddresses() {
     .flat()
     .filter(a => a && a.family === 'IPv4' && !a.internal)
     .map(a => a.address)
+}
+
+async function checkTunnelAnswers(publicUrl) {
+  if (!publicUrl) return false
+  try {
+    const response = await fetch(`${publicUrl}${HEALTH_PATH}`, { cache: 'no-store', signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) })
+    return response.ok
+  } catch {
+    return false
+  }
 }
 
 function readJson(file) {

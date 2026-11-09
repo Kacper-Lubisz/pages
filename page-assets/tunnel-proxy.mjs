@@ -22,6 +22,7 @@ const config = JSON.parse(process.argv[2] || '{}')
 const routes = {}
 for (const port of config.ports ?? []) routes[port] = port === config.primaryPort ? '' : `/__svc/${port}`
 if (config.shortLinks) routes[config.shortLinks.port] = '/__qr'
+const HEALTH_PATH = '/__tunnel-health'
 const SVC_PATH = /^\/__svc\/(\d+)(.*)$/
 const QR_PATH = /^\/__qr(.*)$/
 
@@ -88,6 +89,10 @@ function responseHeaders(upstreamRes, origin, upstream) {
 }
 
 const server = http.createServer((req, res) => {
+  if (req.url === HEALTH_PATH) {
+    res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'no-store' }).end('ok')
+    return
+  }
   const upstream = upstreamFor(req.url || '/')
   if (!upstream) {
     res.writeHead(404, { 'content-type': 'text/plain' }).end('Not routed by the tunnel proxy.')
